@@ -49,7 +49,7 @@ def convolve_3d_same(cube, psf, compute_fourier=True):
 def pad_cube(cube, axes=None):
     """
     Computes padding needed for a cube to make sure it has a power of 2 shape
-    along the dimensions of passed axes (by default [0,1])
+    along the dimensions of passed axes (by default [0,1]).
     Returns the padded cube and cube slices,
     which are the indices of the actual data in the padded cube.
     """

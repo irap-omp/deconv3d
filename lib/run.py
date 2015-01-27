@@ -1,11 +1,8 @@
 ## GENERAL PACKAGES ############################################################
-import os
-import numpy
 import numpy as np
 from hyperspectral import HyperspectralCube as Cube
 
 ## LOCAL PACKAGES ##############################################################
-
 from instruments import Instrument
 
 ## OPTIONAL PACKAGES ###########################################################
@@ -19,11 +16,17 @@ except ImportError:
     from pyfits import Header
 
 
+## MH WITHIN GIBBS RUNNER ######################################################
 class Run:
     """
 
     """
-    def __init__(self, cube, instrument, max_iterations=10000):
+    def __init__(
+        self,
+        cube, instrument,
+        max_iterations=10000,
+        min_acceptance_rate=0.05
+    ):
 
         # Set up the input data cube
         if isinstance(cube, basestring):
@@ -56,6 +59,37 @@ class Run:
         cube_height = cube_shape[1]
         cube_depth = cube_shape[0]
         current_iteration = 0
+        current_acceptance_rate = 0.
+
+        # Loop as many times as we want, as long as the acceptance is OK
+        while \
+                current_iteration < max_iterations \
+                and \
+                (
+                    current_acceptance_rate > min_acceptance_rate or
+                    current_acceptance_rate == 0.
+                ):
+
+            # Loop through all pixels
+            for (i, j) in self.spaxel_iterator():
+                # print i, j
+                # fixme
+                pass
+
+
+            current_iteration += 1
+
+    def spaxel_iterator(self):
+        """
+        Creates a generator that will yield all (x, y) doublets, for iteration.
+        This generator iterates over the pixel "coordinates" column by column.
+        Override this to implement your own iteration logic.
+        """
+        w = self.cube.data.shape[2]
+        h = self.cube.data.shape[1]
+        for i in range(0, w):
+            for j in range(0, h):
+                yield (i, j)
 
     ## SIMULATOR ###############################################################
 
