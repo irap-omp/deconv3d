@@ -23,7 +23,7 @@ class Run:
     """
 
     """
-    def __init__(self, cube, instrument):
+    def __init__(self, cube, instrument, max_iterations=10000):
 
         # Set up the input data cube
         if isinstance(cube, basestring):
@@ -49,3 +49,48 @@ class Run:
         if not isinstance(instrument, Instrument):
             raise TypeError("Provided instrument is not an Instrument")
         self.instrument = instrument
+
+        # Initialize
+        cube_shape = cube.data.shape
+        cube_width = cube_shape[2]
+        cube_height = cube_shape[1]
+        cube_depth = cube_shape[0]
+        current_iteration = 0
+
+    ## SIMULATOR ###############################################################
+
+    # def
+
+    @staticmethod
+    def gaussian(x, a, c, w):
+        """
+        Returns `g(x)`, `g` being a gaussian described by the other parameters :
+
+        a: Amplitude
+        c: Center
+        w: Width
+
+        If `x` is an `ndarray`, the return value will be an `ndarray` too.
+        """
+        return a * np.exp(-1. * (x - c) ** 2 / (2. * w ** 2))
+
+    ## PROBABILITIES ###########################################################
+
+    def likelihood(self):
+        """
+        See http://en.wikipedia.org/wiki/Likelihood_function
+        """
+        pass
+
+    def prior(self):
+        """
+        See http://en.wikipedia.org/wiki/Prior_probability
+            http://en.wikipedia.org/wiki/A_priori_probability
+        """
+        pass
+
+    def posterior(self):
+        """
+        See http://en.wikipedia.org/wiki/Posterior_probability
+        """
+        pass
