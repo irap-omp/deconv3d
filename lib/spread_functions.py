@@ -1,6 +1,7 @@
 # coding=utf-8
 
 import numpy as np
+from astropy import units as u
 
 #
 # This file contains the FieldSpreadFunction and LineSpreadFunction interfaces
@@ -52,8 +53,7 @@ class NoFieldSpreadFunction(FieldSpreadFunction):
 
 class ImageFieldSpreadFunction(FieldSpreadFunction):
     """
-    A custom field spread function using a provided 2D image
-    that should have the same shape as the cube's (x,y).
+    A custom field spread function using a provided 2D image.
     This class is handy when you already have computed your FSF image externally
     and want to use it as-is.
     """
@@ -91,7 +91,8 @@ class GaussianFieldSpreadFunction(FieldSpreadFunction):
   ba           = {i.ba}""".format(i=self)
 
     def as_image(self, for_cube, xo=None, yo=None):
-        shape = for_cube.shape[1:]
+        # shape = for_cube.shape[1:]
+        shape = (7, 7)
 
         if xo is None:
             xo = (shape[1] - 1) / 2 - (shape[1] % 2 - 1)
@@ -100,7 +101,7 @@ class GaussianFieldSpreadFunction(FieldSpreadFunction):
 
         y, x = np.indices(shape)
         r = self._radius(xo, yo, x, y)
-        fwhm = self.fwhm / for_cube.xy_step
+        fwhm = self.fwhm / for_cube.get_step(1).value
 
         psf = np.exp(-0.5 * (r / (fwhm / 2.35482)) ** 2)
 
@@ -219,7 +220,7 @@ class GaussianLineSpreadFunction(LineSpreadFunction):
 
     def as_vector(self, for_cube):
         # Std deviation from FWHM
-        sigma = self.fwhm / 2.35482 / for_cube.z_step
+        sigma = self.fwhm / 2.35482 / for_cube.get_step(0).to(u.um).value
         # Resulting vector shape
         depth = for_cube.shape[0]
         # Assymmetric range around 0
