@@ -113,10 +113,11 @@ class Run:
         current_iteration = 0
         current_acceptance_rate = 0.
 
-        # Initial parameters
+        # Initial parameters, picked at random between boundaries
         min_boundaries = np.asarray(self.model.min_boundaries(cube))
         max_boundaries = np.asarray(self.model.max_boundaries(cube))
-        parameters = min_boundaries + (max_boundaries - min_boundaries) * np.random.rand(len(self.model.parameters()))
+        parameters = min_boundaries + (max_boundaries - min_boundaries) * \
+                     np.random.rand(len(self.model.parameters()))
 
         # Prepare the chain
         types_param = ['float32' for i in range(len(self.model.parameters()))]
@@ -153,12 +154,12 @@ class Run:
                 yy = y + fsf_y
                 yyy = fsf_y + fsf_half_height
                 if yy < 0 or yy >= cube_height:
-                    continue
+                    continue  # spaxel is out of the cube -- EDGE EFFECTS !?    fixme
                 for fsf_x in range(-fsf_half_width, +fsf_half_width+1):
                     xx = x + fsf_x
                     xxx = fsf_x + fsf_half_width
                     if xx < 0 or xx >= cube_width:
-                        continue
+                        continue  # spaxel is out of the cube -- EDGE EFFECTS !?
                     sim[:, yy, xx] += line_conv * fsf[yyy, xxx]
 
         print sim
@@ -182,8 +183,9 @@ class Run:
                 # fixme
                 pass
 
-
             current_iteration += 1
+
+    ## ITERATORS ###############################################################
 
     def spaxel_iterator(self):
         """
@@ -199,38 +201,38 @@ class Run:
 
     ## SIMULATOR ###############################################################
 
-    @staticmethod
-    def gaussian(x, a, c, w):
-        """
-        Returns `g(x)`, `g` being a gaussian described by the other parameters :
-
-        a: Amplitude
-        c: Center
-        w: Width
-
-        If `x` is an `ndarray`, the return value will be an `ndarray` too.
-        """
-        return a * np.exp(-1. * (x - c) ** 2 / (2. * w ** 2))
+    # @staticmethod
+    # def gaussian(x, a, c, w):
+    #     """
+    #     Returns `g(x)`, `g` being a gaussian described by the other parameters :
+    #
+    #     a: Amplitude
+    #     c: Center
+    #     w: Width
+    #
+    #     If `x` is an `ndarray`, the return value will be an `ndarray` too.
+    #     """
+    #     return a * np.exp(-1. * (x - c) ** 2 / (2. * w ** 2))
 
     ## PROBABILITIES ###########################################################
 
     # WIP
 
-    def likelihood(self):
-        """
-        See http://en.wikipedia.org/wiki/Likelihood_function
-        """
-        pass
-
-    def prior(self):
-        """
-        See http://en.wikipedia.org/wiki/Prior_probability
-            http://en.wikipedia.org/wiki/A_priori_probability
-        """
-        pass
-
-    def posterior(self):
-        """
-        See http://en.wikipedia.org/wiki/Posterior_probability
-        """
-        pass
+    # def likelihood(self):
+    #     """
+    #     See http://en.wikipedia.org/wiki/Likelihood_function
+    #     """
+    #     pass
+    #
+    # def prior(self):
+    #     """
+    #     See http://en.wikipedia.org/wiki/Prior_probability
+    #         http://en.wikipedia.org/wiki/A_priori_probability
+    #     """
+    #     pass
+    #
+    # def posterior(self):
+    #     """
+    #     See http://en.wikipedia.org/wiki/Posterior_probability
+    #     """
+    #     pass
