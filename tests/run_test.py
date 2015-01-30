@@ -35,6 +35,6 @@ class RunTest(unittest.TestCase):
 
         self.assertFalse(cube.is_empty())
 
-        run = Run(cube, inst)
+        run = Run(cube, inst, max_iterations=41)
 
 
