@@ -2,19 +2,43 @@
 WHAT IS IT
 ==========
 
-This is a work in progress.
+**This is a work in progress.**
 
-FIXME
+This is an implementation of a MCMC for estimation and non-parametric
+deconvolution of galactic kinematics from hyperspectral data cubes.
+
+It is a python `2.7` module designed to be flexible, reliable and fast.
+It has not been tested under python `3.x`, but feel free to make it compatible !
 
 
 HOW TO INSTALL
 ==============
 
-Dependencies
-------------
+Using pip
+---------
 
-- astropy
-- hyperspectral
+Running `pip install deconv3d` as root will download and install the module on
+your system, as deconv3d is referenced on the official [python package index]
+(https://pypi.python.org).
+
+Manually
+--------
+
+(todo)
+
+Running `python setup.py` should do the trick.
+
+Mandatory Dependencies
+----------------------
+
+- `astropy` : http://www.astropy.org
+- `hyperspectral` : https://pypi.python.org/pypi/hyperspectral
+
+
+Optional Dependencies
+---------------------
+
+- `bottleneck` : https://pypi.python.org/pypi/Bottleneck
 
 
 DEBIAN PACKAGES
@@ -29,27 +53,18 @@ python2.7 python-numpy python-scipy python-astropy python-matplotlib
 You can also install them via `pip`, it's your choice.
 
 
-PYTHON PACKAGES
----------------
-
-The following are packages that are not (yet) present in the repositories.
-
-- `bottleneck` : https://pypi.python.org/pypi/Bottleneck/0.7.0
-
-You can install bottleneck via `pip`, too :
-
-    $ sudo pip install bottleneck
-
-
 MPDAF PACKAGES
 --------------
 
 _Optional._
 
-Deconv3D provides a `MUSELineSpreadFunction` class that depends on `mpdaf.MUSE.LSF`.
-Follow [MPDAF install instructions](http://urania1.univ-lyon1.fr/mpdaf/chrome/site/DocCoreLib/installation.html).
+Deconv3D provides a `MUSELineSpreadFunction` class that depends on
+`mpdaf.MUSE.LSF`.
 
-Deconv3D also accepts MPDAF's Cubes as input.
+Follow [MPDAF install instructions]
+(http://urania1.univ-lyon1.fr/mpdaf/chrome/site/DocCoreLib/installation.html).
+
+Deconv3D also accepts `MPDAF`'s Cubes as input.
 
 
 HOW TO TEST
@@ -90,25 +105,26 @@ Once its done, go to `doc` directory, run `make html`.
 ACRONYMS
 ========
 
-<sarcasm>
-Real geniuses never define acronyms. They understand them genetically.
-</sarcasm>
+_Real geniuses never define acronyms. They understand them genetically._
 
-
-FFT     Fast Fourier Transform
-FITS    Flexible Image Transport System
-FWHM    Full Width at Half Maximum
-HDU     Header Data Unit
-LSF     Line Spread Function
-MCMC    Markov Chain Monte Carlo
-MPDAF   MUSE Python Data Analysis Framework
-MUSE    Multi Unit Spectroscopic Explorer
-NFM     Narrow Field Mode
-PA      Position Angle
-PC      ParseC
-PSF     Point Spread Function
-SNR     Signal to Noise Ratio
-        The relative intensity of the signal from the noise
-        Should be > 1, or the data is useless
-WFM     Wide Field Mode
-WSC     World Coordinates System
+ Acronym | Meaning
+---------|----------------------------------------------------------------------
+EAFP     | Easier to Ask for Forgiveness than Permission
+FFT      | Fast Fourier Transform
+FITS     | Flexible Image Transport System
+FWHM     | Full Width at Half Maximum
+HDU      | Header Data Unit
+LBYL     | Look Before You Leap
+LSF      | Line Spread Function
+MCMC     | Markov Chain Monte Carlo
+MPDAF    | MUSE Python Data Analysis Framework
+MUSE     | Multi Unit Spectroscopic Explorer
+NFM      | Narrow Field Mode
+PA       | Position Angle
+PC       | ParseC
+PSF      | Point Spread Function
+SNR      | Signal to Noise Ratio
+         | The relative intensity of the signal from the noise
+         | Should be > 1, or the data is useless
+WFM      | Wide Field Mode
+WSC      | World Coordinates System
