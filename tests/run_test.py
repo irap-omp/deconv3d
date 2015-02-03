@@ -35,6 +35,8 @@ class RunTest(unittest.TestCase):
 
         self.assertFalse(cube.is_empty())
 
-        run = Run(cube, inst, max_iterations=41)
+        run = Run(cube, inst, max_iterations=100)
+
+        print run.parameters[99]
 
 

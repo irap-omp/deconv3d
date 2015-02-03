@@ -92,7 +92,7 @@ class GaussianFieldSpreadFunction(FieldSpreadFunction):
 
     def as_image(self, for_cube, xo=None, yo=None):
         # shape = for_cube.shape[1:]
-        shape = (7, 7)
+        shape = (7, 7)  # fixme
 
         if xo is None:
             xo = (shape[1] - 1) / 2 - (shape[1] % 2 - 1)

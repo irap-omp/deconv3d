@@ -1,13 +1,21 @@
+# coding=utf-8
+
 ## GENERAL PACKAGES ############################################################
 import numpy as np
+from math import log, isnan
 from hyperspectral import HyperspectralCube as Cube
+import logging
+from numpy.core.fromnumeric import shape
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('deconv3d')
 
 ## LOCAL PACKAGES ##############################################################
 from instruments import Instrument
+from convolution import convolve_1d
+from math_utils import median_clip
 
 ## OPTIONAL PACKAGES ###########################################################
-from lib.convolution import convolve_1d
-
 try:
     import bottleneck as bn
 except ImportError:
@@ -21,6 +29,7 @@ except ImportError:
 class LineModel:
     """
     Interface for the model of the spectral line.
+    todo: other required methods, and InterfaceError
     """
 
     def parameters(self):
@@ -66,10 +75,14 @@ class Run:
     def __init__(
         self,
         cube, instrument,
+        variance=None,
         model=SingleGaussianLineModel,
         max_iterations=10000,
         min_acceptance_rate=0.05
     ):
+
+        # Assign the logger to a property for convenience
+        self.logger = logger
 
         # Set up the input data cube
         if isinstance(cube, basestring):
@@ -90,6 +103,40 @@ class Run:
         if cube.is_empty():
             raise ValueError("Provided cube is empty")
         self.cube = cube
+        self.data_cube = cube.data
+
+        # Flag valid pixels so that we use only them for iteration and summation
+        # 0 : invalid
+        # 1 : valid
+        self.validity_flag = np.ones_like(self.data_cube)
+        self.validity_flag[np.isnan(self.data_cube)] = 0
+
+        # Set up the variance
+        if variance is not None:
+            if isinstance(variance, basestring):
+                variance = Cube.from_fits(variance)
+            if not isinstance(variance, Cube):
+                raise TypeError("Provided variance is not a Cube")
+            if variance.data is None:
+                self.logger.warning("Provided variance cube is empty")
+            self.logger.info("Using provided variance : %s" % variance)
+            variance_cube = variance.data
+            self.logger.info("Replacing zeros in the variance cube by 1e12")
+            variance_cube = np.where(variance_cube == 0.0, 1e12, variance_cube)
+            #variance = np.where(np.isnan(cube_data), 1e12, variance)
+        else:
+            # Clip data, and collect standard deviation sigma
+            # FIXME: MEDIAN_CLIP MUTATES THE INPUT CUBE, and we provide a VIEW
+            _, clip_sigma, _ = median_clip(cube.data[2:-2, 2:-4, 2:4], 2.5)
+            # Adjust sigma if it is zero, as we'll divide with it later on
+            if clip_sigma == 0:
+                clip_sigma = 1e-20
+            variance_cube = clip_sigma ** 2
+
+        # Save the variance cube
+        # variance = np.resize(variance, self.cube.shape)
+        self.variance_cube = variance_cube   # cube of sigma^2
+        self.error_cube = np.sqrt(self.variance_cube)  # cube of sigmas
 
         # Set up the instrument
         if not isinstance(instrument, Instrument):
@@ -102,7 +149,7 @@ class Run:
         else:
             self.model = model()
             if not isinstance(self.model, LineModel):
-                raise TypeError("Provided model is not a TheoreticalModel")
+                raise TypeError("Provided model is not a LineModel")
 
         # Collect informations about the cube
         cube_shape = cube.data.shape
@@ -118,21 +165,23 @@ class Run:
         if fsf.shape[0] % 2 == 0 or fsf.shape[1] % 2 == 0:
             raise ValueError("FSF *must* be of odd dimensions")
 
-        # Parameters boundaries -- todo: merge with input params
+        # Parameters boundaries -- todo: merge with input params ?
         min_boundaries = np.asarray(self.model.min_boundaries(cube))
         max_boundaries = np.asarray(self.model.max_boundaries(cube))
 
+        self.logger.info("Min boundaries : %s" % min_boundaries)
+        self.logger.info("Max boundaries : %s" % max_boundaries)
+
         # Parameter jumping amplitude
         jumping_amplitude = np.array(np.sqrt(
-            (min_boundaries - max_boundaries) ** 2 / 12.
+            (max_boundaries - min_boundaries) ** 2 / 12.
         ) * len(self.model.parameters()) / np.size(cube.data))
 
         # Prepare the chain of parameters
         # One set of parameters per iteration, per spaxel
-        types_param = ['float32' for i in range(len(self.model.parameters()))]
+        parameters_count = len(self.model.parameters())
         parameters = np.ndarray(
-            (max_iterations, cube_height, cube_width),
-            dtype=zip(self.model.parameters(), types_param)
+            (max_iterations, cube_height, cube_width, parameters_count)
         )
 
         # Prepare the array of contributions
@@ -144,7 +193,8 @@ class Run:
 
         # Initial parameters, picked at random between boundaries
         for (y, x) in self.spaxel_iterator():
-            p_new = min_boundaries + (max_boundaries - min_boundaries) * \
+            p_new = \
+                min_boundaries + (max_boundaries - min_boundaries) * \
                 np.random.rand(len(self.model.parameters()))
             parameters[0][y][x] = p_new
 
@@ -163,7 +213,7 @@ class Run:
                 fsf, lsf, lsf_fft=lsf_fft
             )
 
-            sim += contribution
+            sim = sim + contribution
             contributions[y, x, :, :, :] = contribution
 
         err = cube.data - sim
@@ -189,16 +239,17 @@ class Run:
             # Loop through all spaxels
             for (y, x) in self.spaxel_iterator():
 
-                # Local error (not sure how to name this?)
-                # u = err + contributions[y, x]
-
                 # Compute a new set of parameters for this spaxel
-                p_old = parameters[current_iteration-1][y][x]
+                p_old = np.array(parameters[current_iteration-1][y][x].tolist())
                 p_new = self.jump_from(p_old, jumping_amplitude)
 
                 # Check if new parameters are within the boundaries
-                if p_new < min_boundaries or p_new > max_boundaries:
-                    print "New proposed parameters are out of boundaries."
+                # It happens quite often that parameters are out of boundaries,
+                # so we do not log anything because it slows the script a lot.
+                too_low = np.array(p_new < min_boundaries)
+                too_high = np.array(p_new > max_boundaries)
+                if too_low.any() or too_high.any():
+                    # print "New proposed parameters are out of boundaries."
                     parameters[current_iteration][y][x] = p_old
                     continue
 
@@ -209,16 +260,30 @@ class Run:
                     fsf, lsf, lsf_fft=lsf_fft
                 )
 
-                # Minimum acceptance ratio, picked randomly between 0 and 1
-                min_acceptance_ratio = np.random.rand()
+                # Remove contribution of parameters of previous iteration
+                ul = err + contributions[y, x]
+                # Add contribution of new parameters
+                res = ul - contribution
+
+                # Minimum acceptance ratio, picked randomly between -∞ and 0
+                min_acceptance_ratio = log(np.random.rand())
 
                 # Actual acceptance ratio
-                # fixme
+                acceptance_ratio = \
+                    - 1./2. * np.sum((res/variance_cube)**2) \
+                    + 1./2. * np.sum((err/variance_cube)**2)
 
-
-                contributions[y, x] = contribution
+                if min_acceptance_ratio < acceptance_ratio:
+                    parameters[current_iteration][y][x] = p_new
+                    contributions[y, x] = contribution
+                    err = res
+                else:
+                    parameters[current_iteration][y][x] = p_old
 
             current_iteration += 1
+
+        # Output
+        self.parameters = parameters
 
     ## ITERATORS ###############################################################
 
@@ -235,7 +300,7 @@ class Run:
             for x in range(0, w):
                 yield (y, x)
 
-    ## SIMULATOR ###############################################################
+    ## MCMC ####################################################################
 
     def jump_from(self, parameters, amplitude):
         """
@@ -248,6 +313,8 @@ class Run:
         random_uniforms = np.random.uniform(-np.pi / 2., np.pi / 2., size=size)
         return parameters + amplitude * np.tan(random_uniforms)
 
+    ## SIMULATOR ###############################################################
+
     def contribution_of_spaxel(self, x, y, parameters,
                                cube_width, cube_height, cube_depth,
                                fsf, lsf, lsf_fft=None):
@@ -257,7 +324,7 @@ class Run:
         """
 
         # Initialize output cube
-        sim = np.ndarray((cube_depth, cube_height, cube_width))
+        sim = np.zeros((cube_depth, cube_height, cube_width))
 
         # Raw line model
         line = self.model.modelize(range(0, cube_depth), parameters)
