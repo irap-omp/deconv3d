@@ -5,7 +5,6 @@ import numpy as np
 from math import log, isnan
 from hyperspectral import HyperspectralCube as Cube
 import logging
-from numpy.core.fromnumeric import shape
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('deconv3d')
@@ -14,6 +13,7 @@ logger = logging.getLogger('deconv3d')
 from instruments import Instrument
 from convolution import convolve_1d
 from math_utils import median_clip
+from line_models import LineModel, SingleGaussianLineModel
 
 ## OPTIONAL PACKAGES ###########################################################
 try:
@@ -24,55 +24,6 @@ try:
     from astropy.io.fits import Header
 except ImportError:
     from pyfits import Header
-
-
-class LineModel:
-    """
-    Interface for the model of the spectral line.
-    """
-
-    def parameters(self):
-        raise NotImplementedError()
-
-    def min_boundaries(self, cube):
-        raise NotImplementedError()
-
-    def max_boundaries(self, cube):
-        raise NotImplementedError()
-
-    def modelize(self, x, parameters):  # unsure about the name of this method
-        raise NotImplementedError()
-
-
-class SingleGaussianLineModel(LineModel):
-
-    def __init__(self):
-        pass
-
-    def parameters(self):
-        return ['a', 'c', 'w']
-
-    def min_boundaries(self, cube):
-        return [0, 0, 0]
-
-    def max_boundaries(self, cube):
-        return [np.amax(cube.data), cube.data.shape[0]-1, cube.data.shape[0]]
-
-    def modelize(self, x, parameters):
-        return self.gaussian(x, parameters[0], parameters[1], parameters[2])
-
-    @staticmethod
-    def gaussian(x, a, c, w):
-        """
-        Returns `g(x)`, `g` being a gaussian described by the other parameters :
-
-        a: Amplitude
-        c: Center
-        w: Width
-
-        If `x` is an `ndarray`, the return value will be an `ndarray` too.
-        """
-        return a * np.exp(-1. * (x - c) ** 2 / (2. * w ** 2))
 
 
 ## MH WITHIN GIBBS RUNNER ######################################################
