@@ -1,0 +1,6 @@
+0.1.0 -- 01-02-2015
+-------------------
+
+- Initial implementation, without any optimization
+- Support for user-defined line models
+- Basic support for input FITS files
