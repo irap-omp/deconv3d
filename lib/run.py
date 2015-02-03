@@ -29,11 +29,19 @@ except ImportError:
 class LineModel:
     """
     Interface for the model of the spectral line.
-    todo: other required methods, and InterfaceError
     """
 
     def parameters(self):
-        raise NotImplementedError("Implement parameters()")
+        raise NotImplementedError()
+
+    def min_boundaries(self, cube):
+        raise NotImplementedError()
+
+    def max_boundaries(self, cube):
+        raise NotImplementedError()
+
+    def modelize(self, x, parameters):  # unsure about the name of this method
+        raise NotImplementedError()
 
 
 class SingleGaussianLineModel(LineModel):
@@ -50,7 +58,7 @@ class SingleGaussianLineModel(LineModel):
     def max_boundaries(self, cube):
         return [np.amax(cube.data), cube.data.shape[0]-1, cube.data.shape[0]]
 
-    def modelize(self, x, parameters):  # unsure about the name of this method
+    def modelize(self, x, parameters):
         return self.gaussian(x, parameters[0], parameters[1], parameters[2])
 
     @staticmethod
@@ -105,11 +113,19 @@ class Run:
         self.cube = cube
         self.data_cube = cube.data
 
-        # Flag valid pixels so that we use only them for iteration and summation
+        # Collect informations about the cube
+        cube_shape = cube.data.shape
+        cube_width = cube_shape[2]
+        cube_height = cube_shape[1]
+        cube_depth = cube_shape[0]
+
+        # Flag valid spaxels : we use only them for iteration and summation
+        # This is an image, not a cube. By default, we flag as invalid all
+        # spaxels that have a nan value somewhere in the spectrum.
         # 0 : invalid
         # 1 : valid
-        self.validity_flag = np.ones_like(self.data_cube)
-        self.validity_flag[np.isnan(self.data_cube)] = 0
+        self.validity_flag = np.ones((cube_height, cube_width))
+        self.validity_flag[np.isnan(np.sum(self.data_cube, 0))] = 0
 
         # Set up the variance
         if variance is not None:
@@ -126,16 +142,15 @@ class Run:
             #variance = np.where(np.isnan(cube_data), 1e12, variance)
         else:
             # Clip data, and collect standard deviation sigma
-            # FIXME: MEDIAN_CLIP MUTATES THE INPUT CUBE, and we provide a VIEW
-            _, clip_sigma, _ = median_clip(cube.data[2:-2, 2:-4, 2:4], 2.5)
+            sub_data = np.copy(cube.data[2:-2, 2:-4, 2:4])
+            _, clip_sigma, _ = median_clip(sub_data, 2.5)
             # Adjust sigma if it is zero, as we'll divide with it later on
             if clip_sigma == 0:
-                clip_sigma = 1e-20
+                clip_sigma = 1e-20  # arbitrarily low value
             variance_cube = clip_sigma ** 2
 
-        # Save the variance cube
-        # variance = np.resize(variance, self.cube.shape)
-        self.variance_cube = variance_cube   # cube of sigma^2
+        # Save the variance cube and the standard deviation cube (error cube)
+        self.variance_cube = variance_cube             # cube of sigma^2
         self.error_cube = np.sqrt(self.variance_cube)  # cube of sigmas
 
         # Set up the instrument
@@ -151,15 +166,10 @@ class Run:
             if not isinstance(self.model, LineModel):
                 raise TypeError("Provided model is not a LineModel")
 
-        # Collect informations about the cube
-        cube_shape = cube.data.shape
-        cube_width = cube_shape[2]
-        cube_height = cube_shape[1]
-        cube_depth = cube_shape[0]
-
         current_iteration = 0
         current_acceptance_rate = 0.
 
+        # Set up the FSF and the LSF, from the instrument
         lsf = instrument.lsf.as_vector(cube)
         fsf = instrument.fsf.as_image(cube)
         if fsf.shape[0] % 2 == 0 or fsf.shape[1] % 2 == 0:
@@ -169,8 +179,10 @@ class Run:
         min_boundaries = np.asarray(self.model.min_boundaries(cube))
         max_boundaries = np.asarray(self.model.max_boundaries(cube))
 
-        self.logger.info("Min boundaries : %s" % min_boundaries)
-        self.logger.info("Max boundaries : %s" % max_boundaries)
+        self.logger.info("Min boundaries : %s" %
+                         dict(zip(self.model.parameters(), min_boundaries)))
+        self.logger.info("Max boundaries : %s" %
+                         dict(zip(self.model.parameters(), max_boundaries)))
 
         # Parameter jumping amplitude
         jumping_amplitude = np.array(np.sqrt(
@@ -200,7 +212,6 @@ class Run:
 
         # Initial error/difference between simulation and data
         sim = np.zeros_like(cube.data)
-        err = np.zeros_like(cube.data)
 
         print("Iteration #%d" % current_iteration)
 
@@ -217,13 +228,7 @@ class Run:
             contributions[y, x, :, :, :] = contribution
 
         err = cube.data - sim
-
         current_iteration += 1
-
-        # import matplotlib.pyplot as plt
-        # plt.plot(line)
-        # plt.ylabel('line')
-        # plt.show()
 
         # Loop as many times as specified, as long as the acceptance is OK
         while \
@@ -290,7 +295,8 @@ class Run:
     def spaxel_iterator(self):
         """
         Creates a generator that will yield all (y, x) doublets, for iteration.
-        This generator iterates over the pixel "coordinates" column by column.
+        This generator iterates over the spaxel indices column by column,
+        skipping spaxels flagged as invalid.
 
         Override this to implement your own iteration logic.
         """
@@ -298,7 +304,8 @@ class Run:
         w = self.cube.data.shape[2]
         for y in range(0, h):
             for x in range(0, w):
-                yield (y, x)
+                if self.validity_flag[y,x] == 1:
+                    yield (y, x)
 
     ## MCMC ####################################################################
 
