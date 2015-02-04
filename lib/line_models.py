@@ -7,6 +7,8 @@ class LineModel:
     Your line models should extend this class, and implement its methods.
     Duck typing is very good, but this is cleaner, faster and more maintainable,
     as we have a lot of methods to check for. LBYL > EAFP here.
+
+    See `SingleGaussianLineModel` below for an implementation example.
     """
 
     def __init__(self):  # PEP compliance

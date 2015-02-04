@@ -18,7 +18,7 @@ class RunTest(unittest.TestCase):
     root_folder = abspath(join(dirname(abspath(__file__)), os.pardir))
     fits_folder = join(root_folder, 'tests/input')
 
-    fits_muse_filename = join(fits_folder, 'subcube_MUSE.fits')
+    fits_muse_filename = join(fits_folder, 'test_cube_01.fits')
 
     def test_init_with_empty_cube(self):
         cube = Cube()
@@ -37,6 +37,6 @@ class RunTest(unittest.TestCase):
 
         run = Run(cube, inst, max_iterations=100)
 
-        print run.parameters[99]
+        run.plot_images()
 
 

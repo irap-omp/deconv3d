@@ -2,9 +2,11 @@
 
 ## GENERAL PACKAGES ############################################################
 import numpy as np
+import logging
+from os.path import splitext
 from math import log, isnan
 from hyperspectral import HyperspectralCube as Cube
-import logging
+from matplotlib import pyplot as plot
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('deconv3d')
@@ -126,9 +128,9 @@ class Run:
         if fsf.shape[0] % 2 == 0 or fsf.shape[1] % 2 == 0:
             raise ValueError("FSF *must* be of odd dimensions")
 
-        # Parameters boundaries -- todo: merge with input params ?
-        min_boundaries = np.asarray(self.model.min_boundaries(cube))
-        max_boundaries = np.asarray(self.model.max_boundaries(cube))
+        # Parameters boundaries
+        min_boundaries = np.array(self.model.min_boundaries(cube))
+        max_boundaries = np.array(self.model.max_boundaries(cube))
 
         self.logger.info("Min boundaries : %s" %
                          dict(zip(self.model.parameters(), min_boundaries)))
@@ -271,7 +273,39 @@ class Run:
         random_uniforms = np.random.uniform(-np.pi / 2., np.pi / 2., size=size)
         return parameters + amplitude * np.tan(random_uniforms)
 
+    def extract_parameters(self):
+        """
+        Extracts the best fit parameters from the chain of parameters.
+        This takes the mean after removing the burnout.
+        Returns a 2D array of parameters. (one parameter set per spaxel)
+        """
+
+        # Remove the burnout (let's say the first 20%)
+        i = self.parameters.shape[0]
+        parameters_burned_out = self.parameters[int(i/5.):, ...]
+
+        return np.mean(parameters_burned_out, 0)
+
     ## SIMULATOR ###############################################################
+
+    def simulate(self, shape, parameters):
+
+        sim = np.zeros(shape)
+        lsf = self.instrument.lsf.as_vector(self.cube)
+        fsf = self.instrument.fsf.as_image(self.cube)
+
+        lsf_fft = None  # memoization holder for performance
+        for (y, x) in self.spaxel_iterator():
+
+            contribution, lsf_fft = self.contribution_of_spaxel(
+                x, y, parameters[y][x],
+                shape[2], shape[1], shape[0],
+                fsf, lsf, lsf_fft=lsf_fft
+            )
+
+            sim = sim + contribution
+
+        return sim
 
     def contribution_of_spaxel(self, x, y, parameters,
                                cube_width, cube_height, cube_depth,
@@ -311,38 +345,71 @@ class Run:
 
         return sim, lsf_fft
 
-    # @staticmethod
-    # def gaussian(x, a, c, w):
-    #     """
-    #     Returns `g(x)`, `g` being a gaussian described by the other parameters :
-    #
-    #     a: Amplitude
-    #     c: Center
-    #     w: Width
-    #
-    #     If `x` is an `ndarray`, the return value will be an `ndarray` too.
-    #     """
-    #     return a * np.exp(-1. * (x - c) ** 2 / (2. * w ** 2))
+    ## PLOTS ###################################################################
 
-    ## PROBABILITIES ###########################################################
+    def plot_images(self, filepath=None):
+        """
+        Plot a mosaic of images of the cropped (along z) cubes,
+        and then either show it or save it to a file.
 
-    # WIP
+        filepath: string
+            If specified, will write the plot to a file instead of showing it.
+            The file will be created at the provided absolute or relative filepath.
+            The extension of the file must be either png or pdf.
+        z_crop: None|int
+            The maximum and total length of the crop (in pixels) along z,
+            centered on the galaxy's z position.
+            If you provide zero or an even value (2n),
+            the closest bigger odd value will be used (2n+1).
+            By default, will not crop.
+        """
 
-    # def likelihood(self):
-    #     """
-    #     See http://en.wikipedia.org/wiki/Likelihood_function
-    #     """
-    #     pass
-    #
-    # def prior(self):
-    #     """
-    #     See http://en.wikipedia.org/wiki/Prior_probability
-    #         http://en.wikipedia.org/wiki/A_priori_probability
-    #     """
-    #     pass
-    #
-    # def posterior(self):
-    #     """
-    #     See http://en.wikipedia.org/wiki/Posterior_probability
-    #     """
-    #     pass
+        if filepath is not None:
+            name, extension = splitext(filepath)
+            supported_extensions = ['.png', '.pdf']
+            if not extension in supported_extensions:
+                raise ValueError("Extension '%s' is not supported, "
+                                 "you may use one of %s",
+                                 extension, ', '.join(supported_extensions))
+
+
+        p = self.extract_parameters()
+        convolved_cube = self.simulate(self.data_cube.shape, p)
+        self._plot_images(self.data_cube, convolved_cube)
+
+        # fixme: generate cube from best fit params
+
+        if filepath is None:
+            plot.show()
+        else:
+            plot.savefig(filepath)
+
+    def _plot_images(self, data_cube, convolved_cube):
+
+        fig = plot.figure(1, figsize=(16, 9))
+        plot.clf()
+        plot.subplots_adjust(wspace=0.25, hspace=0.25, bottom=0.05,
+                             top=0.95, left=0.05, right=0.95)
+
+        # MEASURE
+        sub = fig.add_subplot(2, 2, 1)
+        sub.set_title('Measured')
+        measured_cube = data_cube[:, :, :]
+        measured_image = (measured_cube.sum(0) / measured_cube.shape[0])
+        plot.imshow(measured_image, interpolation='nearest', origin='lower')
+        plot.xticks(fontsize=8)
+        plot.yticks(fontsize=8)
+        colorbar = plot.colorbar()
+        colorbar.ax.tick_params(labelsize=8)
+
+        # CONVOLVED
+        sub = fig.add_subplot(2, 2, 2)
+        sub.set_title('Convolved')
+        convolved_image = (convolved_cube.sum(0) / convolved_cube.shape[0])
+        plot.imshow(convolved_image, interpolation='nearest', origin='lower')
+        plot.xticks(fontsize=8)
+        plot.yticks(fontsize=8)
+        colorbar = plot.colorbar()
+        colorbar.ax.tick_params(labelsize=8)
+
+        return fig

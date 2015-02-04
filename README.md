@@ -33,6 +33,7 @@ Mandatory Dependencies
 
 - `astropy` : http://www.astropy.org
 - `hyperspectral` : https://pypi.python.org/pypi/hyperspectral
+- `matplotlib` : https://pypi.python.org/pypi/matplotlib
 
 
 Optional Dependencies
@@ -47,7 +48,7 @@ DEBIAN PACKAGES
 Most of the usual packages can be installed system-wise from repositories.
 
 ```
-python2.7 python-numpy python-scipy python-astropy python-matplotlib
+python2.7 python-numpy python-astropy python-matplotlib
 ```
 
 You can also install them via `pip`, it's your choice.
