@@ -111,6 +111,10 @@ class Run:
             raise TypeError("Provided instrument is not an Instrument")
         self.instrument = instrument
 
+        # Set up the spread functions from the instrument
+        self.lsf = self.instrument.lsf.as_vector(self.cube)
+        self.fsf = self.instrument.fsf.as_image(self.cube)
+
         # Set up the model to match against, from a class name or an instance
         if isinstance(model, LineModel):
             self.model = model
@@ -289,10 +293,11 @@ class Run:
     ## SIMULATOR ###############################################################
 
     def simulate(self, shape, parameters):
+        """
+        wip
+        """
 
         sim = np.zeros(shape)
-        lsf = self.instrument.lsf.as_vector(self.cube)
-        fsf = self.instrument.fsf.as_image(self.cube)
 
         lsf_fft = None  # memoization holder for performance
         for (y, x) in self.spaxel_iterator():
@@ -300,7 +305,7 @@ class Run:
             contribution, lsf_fft = self.contribution_of_spaxel(
                 x, y, parameters[y][x],
                 shape[2], shape[1], shape[0],
-                fsf, lsf, lsf_fft=lsf_fft
+                self.fsf, self.lsf, lsf_fft=lsf_fft
             )
 
             sim = sim + contribution
@@ -312,7 +317,11 @@ class Run:
                                fsf, lsf, lsf_fft=None):
         """
         The contribution cube of the line described by `parameters` in the
-        spaxel (`y`, `x`), after convolution by the `lsf` and `fsf`.
+        spaxel (x, y), after convolution by the `lsf` and `fsf`.
+
+        Returns a cube of shape (cube_width, cube_height, cube_depth), mostly
+        empty (zeros), and with the spatially spread contribution of the line
+        located at pixel (x, y).
         """
 
         # Initialize output cube
@@ -377,8 +386,6 @@ class Run:
         convolved_cube = self.simulate(self.data_cube.shape, p)
         self._plot_images(self.data_cube, convolved_cube)
 
-        # fixme: generate cube from best fit params
-
         if filepath is None:
             plot.show()
         else:
@@ -407,6 +414,16 @@ class Run:
         sub.set_title('Convolved')
         convolved_image = (convolved_cube.sum(0) / convolved_cube.shape[0])
         plot.imshow(convolved_image, interpolation='nearest', origin='lower')
+        plot.xticks(fontsize=8)
+        plot.yticks(fontsize=8)
+        colorbar = plot.colorbar()
+        colorbar.ax.tick_params(labelsize=8)
+
+        # FSF
+        sub = fig.add_subplot(2, 2, 3)
+        sub.set_title('FSF')
+        fsf_image = self.fsf
+        plot.imshow(fsf_image, interpolation='nearest', origin='lower')
         plot.xticks(fontsize=8)
         plot.yticks(fontsize=8)
         colorbar = plot.colorbar()

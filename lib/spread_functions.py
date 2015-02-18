@@ -92,7 +92,7 @@ class GaussianFieldSpreadFunction(FieldSpreadFunction):
 
     def as_image(self, for_cube, xo=None, yo=None):
         # shape = for_cube.shape[1:]
-        shape = (7, 7)  # fixme
+        shape = (17, 17)  # fixme
 
         if xo is None:
             xo = (shape[1] - 1) / 2 - (shape[1] % 2 - 1)
@@ -101,7 +101,8 @@ class GaussianFieldSpreadFunction(FieldSpreadFunction):
 
         y, x = np.indices(shape)
         r = self._radius(xo, yo, x, y)
-        fwhm = self.fwhm / for_cube.get_step(1).value
+
+        fwhm = self.fwhm / for_cube.get_step(1).to('arcsec').value
 
         psf = np.exp(-0.5 * (r / (fwhm / 2.35482)) ** 2)
 

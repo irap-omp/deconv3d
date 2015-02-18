@@ -35,8 +35,8 @@ class RunTest(unittest.TestCase):
 
         self.assertFalse(cube.is_empty())
 
-        run = Run(cube, inst, max_iterations=100)
+        run = Run(cube, inst, max_iterations=3)
 
-        run.plot_images()
+        run.plot_images('test_run.png')
 
 
