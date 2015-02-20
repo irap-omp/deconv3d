@@ -17,9 +17,23 @@ HOW TO INSTALL
 Using pip
 ---------
 
-Running `pip install deconv3d` as root will download and install the module on
-your system, as deconv3d is referenced on the official [python package index]
+Install `deconv3` system-wide,
+
+```
+$ sudo pip install deconv3d
+```
+
+or just for you :
+
+```
+$ pip install --user deconv3d
+```
+
+Running one of the above commands will download and install the module on
+your system, as `deconv3d` is referenced on the official [python package index]
 (https://pypi.python.org).
+
+
 
 Manually
 --------
@@ -59,13 +73,13 @@ MPDAF PACKAGES
 
 _Optional._
 
-Deconv3D provides a `MUSELineSpreadFunction` class that depends on
+`deconv3d` provides a `MUSELineSpreadFunction` class that depends on
 `mpdaf.MUSE.LSF`.
 
 Follow [MPDAF install instructions]
 (http://urania1.univ-lyon1.fr/mpdaf/chrome/site/DocCoreLib/installation.html).
 
-Deconv3D also accepts `MPDAF`'s Cubes as input.
+`deconv3d` also accepts `MPDAF`'s Cubes as input.
 
 
 HOW TO TEST
@@ -85,7 +99,7 @@ $ apt-get install python-nose
 ```
 or
 ```
-$ pip install nose
+$ pip install --user nose
 ```
 
 

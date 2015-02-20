@@ -32,6 +32,20 @@ except ImportError:
 class Run:
     """
     todo
+
+    cube: str | hyperspectral.HyperspectralCube
+        The path to a FITS file, or a `hyperspectral.HyperspectralCube` object,
+        containing the source data you want to deconvolve.
+    instrument: Instrument
+        The instrument object to use. Use `MUSE()`, for example.
+    variance: ndarray
+        A variance cube of the same dimensions as the input cube.
+    model: Type|LineModel
+        The model object (or classname) of the lines you want to use in the
+        simulation. This is defaulted to SingleGaussianLineModel, a simple model
+        of a single gaussian line that has three parameters defining it.
+    max_iterations: int
+        The number of iterations after which the chain will end.
     """
     def __init__(
         self,
@@ -281,7 +295,7 @@ class Run:
         """
         Extracts the best fit parameters from the chain of parameters.
         This takes the mean after removing the burnout.
-        Returns a 2D array of parameters. (one parameter set per spaxel)
+        Returns a 2D array of parameters sets. (one parameter set per spaxel)
         """
 
         # Remove the burnout (let's say the first 20%)
@@ -294,12 +308,23 @@ class Run:
 
     def simulate(self, shape, parameters):
         """
-        wip
+        Returns a cube containing the simulation (the sum of all the convolved
+        lines) for the given map of parameters sets.
+
+        shape:
+            The desired shape of the output cube.
+        parameters: np.ndarray
+            There is one parameters set per spaxel, so this should be a 2D array
+            of parameters sets.
         """
 
+        # Initialize an empty output cube
         sim = np.zeros(shape)
 
-        lsf_fft = None  # memoization holder for performance
+        # Memoize the Fast Fourier Transform of the Line Spead Function
+        lsf_fft = None  # (for performance)
+
+        # For each spaxel, add its contribution
         for (y, x) in self.spaxel_iterator():
 
             contribution, lsf_fft = self.contribution_of_spaxel(
@@ -321,7 +346,7 @@ class Run:
 
         Returns a cube of shape (cube_width, cube_height, cube_depth), mostly
         empty (zeros), and with the spatially spread contribution of the line
-        located at pixel (x, y).
+        located at spaxel (x, y).
         """
 
         # Initialize output cube
@@ -380,7 +405,6 @@ class Run:
                 raise ValueError("Extension '%s' is not supported, "
                                  "you may use one of %s",
                                  extension, ', '.join(supported_extensions))
-
 
         p = self.extract_parameters()
         convolved_cube = self.simulate(self.data_cube.shape, p)

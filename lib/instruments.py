@@ -101,10 +101,6 @@ lsf = {i.lsf}
 class MUSE(Instrument):
     """
     The MUSE instrument.
-
-    psf_fwhm: float
-        The PSF's Full Width Half Maximum in arcsec, aka. "seeing".
-        Default to 0.8.
     """
 
     def __init__(self, lsf=None, fsf=None,
