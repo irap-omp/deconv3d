@@ -91,8 +91,17 @@ class GaussianFieldSpreadFunction(FieldSpreadFunction):
   ba           = {i.ba}""".format(i=self)
 
     def as_image(self, for_cube, xo=None, yo=None):
-        # shape = for_cube.shape[1:]
-        shape = (17, 17)  # fixme
+        # FWHM in pixels (we assume the pixels are squares!)
+        fwhm = self.fwhm / for_cube.get_step(1).to('arcsec').value
+        deviation = fwhm / 2.35482
+
+        # Guess the shape of the FSF so that we hold the data within three
+        # standard deviations (i think, this has to be confimed)
+        from math import ceil
+        size = ceil(6.*deviation)
+        if size % 2 == 0:
+            size += 1
+        shape = (size, size)
 
         if xo is None:
             xo = (shape[1] - 1) / 2 - (shape[1] % 2 - 1)
@@ -102,9 +111,7 @@ class GaussianFieldSpreadFunction(FieldSpreadFunction):
         y, x = np.indices(shape)
         r = self._radius(xo, yo, x, y)
 
-        fwhm = self.fwhm / for_cube.get_step(1).to('arcsec').value
-
-        psf = np.exp(-0.5 * (r / (fwhm / 2.35482)) ** 2)
+        psf = np.exp(-0.5 * (r / deviation) ** 2)
 
         return psf / psf.sum()
 
