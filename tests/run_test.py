@@ -2,7 +2,7 @@
 ## GENERAL PACKAGES ############################################################
 import os
 from os.path import abspath, dirname, join
-import numpy
+import numpy as np
 import unittest
 from hyperspectral import HyperspectralCube as Cube
 
@@ -11,6 +11,9 @@ from deconv3d import Run, MUSE
 
 
 ## ACTUAL TESTS ################################################################
+from lib.line_models import SingleGaussianLineModel
+
+
 class RunTest(unittest.TestCase):
 
     longMessage = True
@@ -35,8 +38,24 @@ class RunTest(unittest.TestCase):
 
         self.assertFalse(cube.is_empty())
 
-        run = Run(cube, inst, max_iterations=3)
+        run = Run(cube, inst, max_iterations=22222)
 
         run.plot_images('test_run.png')
+        run.save_parameters('test_run.npy')
+
+    def test_initial_parameters(self):
+        cube = Cube.from_fits(self.fits_muse_filename)
+        inst = MUSE()
+
+        m = SingleGaussianLineModel()
+        p = \
+            m.min_boundaries(cube) + \
+            (m.max_boundaries(cube) - m.min_boundaries(cube)) * \
+            np.random.rand(len(m.parameters()))
+
+        run = Run(cube, inst, initial_parameters=p, max_iterations=1)
+
+
+
 
 

@@ -40,10 +40,18 @@ class Run:
         The instrument object to use. Use `MUSE()`, for example.
     variance: ndarray
         A variance cube of the same dimensions as the input cube.
-    model: Type|LineModel
+    model: Type | LineModel
         The model object (or classname) of the lines you want to use in the
         simulation. This is defaulted to SingleGaussianLineModel, a simple model
         of a single gaussian line that has three parameters defining it.
+    initial_parameters: str | ndarray | None
+        Either a filepath to a .npy file holding a ndarray, or the ndarray
+        itself. Should be a 3D array of shape :
+        (cube_height, cube_width, model_parameters_count).
+        If it is a 1D array of the length of the model parameters, it will be
+        broadcasted to each spaxel.
+        When not defined, the initial parameters will be picked at random
+        between their respective boundaries.
     max_iterations: int
         The number of iterations after which the chain will end.
     """
@@ -52,6 +60,7 @@ class Run:
         cube, instrument,
         variance=None,
         model=SingleGaussianLineModel,
+        initial_parameters=None,
         max_iterations=10000,
         min_acceptance_rate=0.05
     ):
@@ -128,6 +137,8 @@ class Run:
         # Set up the spread functions from the instrument
         self.lsf = self.instrument.lsf.as_vector(self.cube)
         self.fsf = self.instrument.fsf.as_image(self.cube)
+        if self.fsf.shape[0] % 2 == 0 or self.fsf.shape[1] % 2 == 0:
+            raise ValueError("FSF *must* be of odd dimensions")
 
         # Set up the model to match against, from a class name or an instance
         if isinstance(model, LineModel):
@@ -136,15 +147,6 @@ class Run:
             self.model = model()
             if not isinstance(self.model, LineModel):
                 raise TypeError("Provided model is not a LineModel")
-
-        current_iteration = 0
-        current_acceptance_rate = 0.
-
-        # Set up the FSF and the LSF, from the instrument
-        lsf = instrument.lsf.as_vector(cube)
-        fsf = instrument.fsf.as_image(cube)
-        if fsf.shape[0] % 2 == 0 or fsf.shape[1] % 2 == 0:
-            raise ValueError("FSF *must* be of odd dimensions")
 
         # Parameters boundaries
         min_boundaries = np.array(self.model.min_boundaries(cube))
@@ -174,12 +176,24 @@ class Run:
             cube_depth, cube_height, cube_width  # contribution data cube
         ))
 
-        # Initial parameters, picked at random between boundaries
-        for (y, x) in self.spaxel_iterator():
-            p_new = \
-                min_boundaries + (max_boundaries - min_boundaries) * \
-                np.random.rand(len(self.model.parameters()))
-            parameters[0][y][x] = p_new
+        current_iteration = 0
+        current_acceptance_rate = 0.
+
+        # Initial parameters
+        if initial_parameters is not None:
+            # ... defined by the user
+            if isinstance(initial_parameters, basestring):
+                initial_parameters = np.load(initial_parameters)
+            initial_parameters = np.array(initial_parameters)
+
+            parameters[0] = initial_parameters
+        else:
+            # ... picked at random between boundaries
+            for (y, x) in self.spaxel_iterator():
+                p_new = \
+                    min_boundaries + (max_boundaries - min_boundaries) * \
+                    np.random.rand(len(self.model.parameters()))
+                parameters[0][y][x] = p_new
 
         # Initial error/difference between simulation and data
         sim = np.zeros_like(cube.data)
@@ -192,7 +206,7 @@ class Run:
             contribution, lsf_fft = self.contribution_of_spaxel(
                 x, y, parameters[0][y][x],
                 cube_width, cube_height, cube_depth,
-                fsf, lsf, lsf_fft=lsf_fft
+                self.fsf, self.lsf, lsf_fft=lsf_fft
             )
 
             sim = sim + contribution
@@ -205,7 +219,7 @@ class Run:
         while \
                 current_iteration < max_iterations \
                 and \
-                (
+                (  # fixme: unused condition
                     current_acceptance_rate > min_acceptance_rate or
                     current_acceptance_rate == 0.
                 ):
@@ -233,7 +247,7 @@ class Run:
                 contribution, lsf_fft = self.contribution_of_spaxel(
                     x, y, p_new,
                     cube_width, cube_height, cube_depth,
-                    fsf, lsf, lsf_fft=lsf_fft
+                    self.fsf, self.lsf, lsf_fft=lsf_fft
                 )
 
                 # Remove contribution of parameters of previous iteration
@@ -291,16 +305,15 @@ class Run:
         random_uniforms = np.random.uniform(-np.pi / 2., np.pi / 2., size=size)
         return parameters + amplitude * np.tan(random_uniforms)
 
-    def extract_parameters(self):
+    def extract_parameters(self, percentage=20.):
         """
-        Extracts the best fit parameters from the chain of parameters.
-        This takes the mean after removing the burnout.
+        Extracts the best fit parameters from the chain of parameters, taking
+        the mean of the last `percentage`% parameters.
         Returns a 2D array of parameters sets. (one parameter set per spaxel)
         """
 
-        # Remove the burnout (let's say the first 20%)
-        i = self.parameters.shape[0]
-        parameters_burned_out = self.parameters[int(i/5.):, ...]
+        s = (100. - percentage) * self.parameters.shape[0] / 100.
+        parameters_burned_out = self.parameters[int(s):, ...]
 
         return np.mean(parameters_burned_out, 0)
 
@@ -378,6 +391,17 @@ class Run:
                 sim[:, yy, xx] += line_conv * fsf[yyy, xxx]
 
         return sim, lsf_fft
+
+    ## SAVES ###################################################################
+
+    def save_parameters(self, filepath):
+        """
+        Writes the extracted parameters map to a file located at `filepath`.
+        Will clobber an existing file. The filepath's extension should be `npy`.
+        The saved map is the 3D array holding a parameters set for each spaxel.
+        """
+
+        np.save(filepath, self.extract_parameters())
 
     ## PLOTS ###################################################################
 

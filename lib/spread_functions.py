@@ -176,7 +176,7 @@ class LineSpreadFunction:
 
     def as_vector(self, for_cube):
         """
-        Should return this LSF as a 1D vector shaped [for_cube], meaning that
+        Should return this LSF as a 1D vector shaped `for_cube`, meaning that
         it should have the length of the cube's spectral axis.
 
         for_cube: HyperspectralCube
@@ -192,7 +192,7 @@ class VectorLineSpreadFunction(LineSpreadFunction):
     that should have the same length as the cube's (z).
     This class is handy when you already have computed your vector externally
     and want to use it as a LSF.
-    Should be centered around zo = (zsize - 1) / 2 - (zsize % 2 - 1)
+    Should be centered around ``zo = (zsize - 1) / 2 - (zsize % 2 - 1)``.
     """
 
     def __init__(self, vector):
@@ -222,7 +222,7 @@ class GaussianLineSpreadFunction(LineSpreadFunction):
     def as_vector(self, for_cube):
         # Std deviation from FWHM
         sigma = self.fwhm / 2.35482 / for_cube.get_step(0).to(u.um).value
-        # Resulting vector shape
+        # Resulting vector length is the spectral depth of the cube
         depth = for_cube.shape[0]
         # Assymmetric range around 0
         zo = (depth - 1) / 2 - (depth % 2 - 1)
@@ -255,8 +255,7 @@ class MUSELineSpreadFunction(LineSpreadFunction):
     See http://urania1.univ-lyon1.fr/mpdaf/chrome/site/DocCoreLib/user_manual_PSF.html
 
     .. warning::
-        This requires the mpdaf module.
-        Currently, the MPDAF module only works for odd arrays.
+        This requires the ``mpdaf`` module, which only works for odd arrays.
     model: string
         See ``mpdaf.MUSE.LSF``'s ``type`` parameter.
         Note: `type` is a restricted keyword, so we use `model` instead.

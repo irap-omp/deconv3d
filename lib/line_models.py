@@ -44,6 +44,10 @@ class LineModel:
 
 
 class SingleGaussianLineModel(LineModel):
+    """
+    A single gaussian curve, defined by its three usual parameters.
+    This is the default line model that deconv3d uses.
+    """
 
     def parameters(self):
         return ['a', 'c', 'w']
