@@ -38,6 +38,12 @@ class Run:
         containing the source data you want to deconvolve.
     instrument: Instrument
         The instrument object to use. Use `MUSE()`, for example.
+    mask: ndarray
+        An image of the spatial size of the above cube, filled with zeroes and
+        ones. The runner will only try to deconvolve the spaxels where this mask
+        is set to 0. The default mask is filled with zeroes, ie. transparent.
+        This mask is also automatically opacified where there are NaN values in
+        the input cube.
     variance: ndarray
         A variance cube of the same dimensions as the input cube.
     model: Type | LineModel
@@ -57,7 +63,9 @@ class Run:
     """
     def __init__(
         self,
-        cube, instrument,
+        cube,
+        instrument,
+        mask=None,
         variance=None,
         model=SingleGaussianLineModel,
         initial_parameters=None,
@@ -95,13 +103,15 @@ class Run:
         cube_height = cube_shape[1]
         cube_depth = cube_shape[0]
 
-        # Flag valid spaxels : we use only them for iteration and summation
-        # This is an image, not a cube. By default, we flag as invalid all
-        # spaxels that have a nan value somewhere in the spectrum.
-        # 0 : invalid
-        # 1 : valid
-        self.validity_flag = np.ones((cube_height, cube_width))
-        self.validity_flag[np.isnan(np.sum(self.data_cube, 0))] = 0
+        # Mask
+        if mask is None:
+            mask = np.zeros((cube_height, cube_width))
+        self.mask = mask
+
+        # Flag invalid spaxels : we won't them for iteration and summation
+        # By default, we flag as invalid all spaxels that have a nan value
+        # somewhere in the spectrum.
+        self.mask[np.isnan(np.sum(self.data_cube, 0))] = 1
 
         # Set up the variance
         if variance is not None:
@@ -273,7 +283,16 @@ class Run:
             current_iteration += 1
 
         # Output
-        self.parameters = parameters
+        self.parameters_chain = parameters
+        self.parameters = self.extract_parameters()
+        self.convolved_cube = Cube(
+            data=self.simulate_convolved(cube_shape, self.parameters),
+            meta=self.cube.meta
+        )
+        self.clean_cube = Cube(
+            data=self.simulate_clean(cube_shape, self.parameters),
+            meta=self.cube.meta
+        )
 
     ## ITERATORS ###############################################################
 
@@ -289,7 +308,7 @@ class Run:
         w = self.cube.data.shape[2]
         for y in range(0, h):
             for x in range(0, w):
-                if self.validity_flag[y,x] == 1:
+                if self.mask[y, x] == 0:
                     yield (y, x)
 
     ## MCMC ####################################################################
@@ -307,19 +326,44 @@ class Run:
 
     def extract_parameters(self, percentage=20.):
         """
-        Extracts the best fit parameters from the chain of parameters, taking
-        the mean of the last `percentage`% parameters.
+        Extracts the mean parameters from the chain of parameters from the last
+        `percentage`% parameters.
         Returns a 2D array of parameters sets. (one parameter set per spaxel)
         """
 
-        s = (100. - percentage) * self.parameters.shape[0] / 100.
-        parameters_burned_out = self.parameters[int(s):, ...]
+        s = (100. - percentage) * self.parameters_chain.shape[0] / 100.
+        parameters_burned_out = self.parameters_chain[int(s):, ...]
 
         return np.mean(parameters_burned_out, 0)
 
     ## SIMULATOR ###############################################################
 
-    def simulate(self, shape, parameters):
+    def simulate_clean(self, shape, parameters):
+        """
+        Returns a cube of `shape`, containing the simulation (the sum of all the
+        lines) for the given map of parameters sets.
+
+        shape:
+            The desired shape of the output cube.
+        parameters: np.ndarray
+            There is one parameters set per spaxel, so this should be a 3D array
+            holding one parameters set per spaxel, of shape (Y, X, len(params)).
+        """
+
+        # Initialize an empty output cube
+        sim = np.zeros(shape)
+
+        # For each spaxel, add its line
+        for (y, x) in self.spaxel_iterator():
+
+            # Contribution of the line, not convolved
+            line = self.model.modelize(range(0, shape[0]), parameters[y, x])
+
+            sim[:, y, x] = line
+
+        return sim
+
+    def simulate_convolved(self, shape, parameters):
         """
         Returns a cube containing the simulation (the sum of all the convolved
         lines) for the given map of parameters sets.
@@ -394,6 +438,30 @@ class Run:
 
     ## SAVES ###################################################################
 
+    def save(self, name, clobber=False):
+        """
+        Saves the run data in various files whose filenames are prepended by
+        `<name>_`.
+        Here's a list of the generated files :
+          - <name>_parameters.npy
+            A 3D array, holding a parameters set for each spaxel.
+            This can be used as input for `initial_parameters`.
+          - <name>_images.png
+            A mosaic of the relevant cubes, flattened along the spectral axis.
+
+        name: string
+            An absolute or relative name that will be used as prefix for the
+            save files.
+            Eg: 'my_run', or '/home/me/science/my_run'.
+        clobber: bool
+            When set to true, will OVERWRITE existing files.
+        """
+        self.save_parameters("%s_parameters.npy" % name)
+        self.plot_images("%s_images.png" % name)
+
+        self.convolved_cube.to_fits("%s_convolved_cube.fits" % name, clobber)
+        self.clean_cube.to_fits("%s_clean_cube.fits" % name, clobber)
+
     def save_parameters(self, filepath):
         """
         Writes the extracted parameters map to a file located at `filepath`.
@@ -431,15 +499,16 @@ class Run:
                                  extension, ', '.join(supported_extensions))
 
         p = self.extract_parameters()
-        convolved_cube = self.simulate(self.data_cube.shape, p)
-        self._plot_images(self.data_cube, convolved_cube)
+        convolved_cube = self.simulate_convolved(self.data_cube.shape, p)
+        clean_cube = self.simulate_clean(self.data_cube.shape, p)
+        self._plot_images(self.data_cube, convolved_cube, clean_cube)
 
         if filepath is None:
             plot.show()
         else:
             plot.savefig(filepath)
 
-    def _plot_images(self, data_cube, convolved_cube):
+    def _plot_images(self, data_cube, convolved_cube, clean_cube):
 
         fig = plot.figure(1, figsize=(16, 9))
         plot.clf()
@@ -459,9 +528,19 @@ class Run:
 
         # CONVOLVED
         sub = fig.add_subplot(2, 2, 2)
-        sub.set_title('Convolved')
+        sub.set_title('Simulation Convolved')
         convolved_image = (convolved_cube.sum(0) / convolved_cube.shape[0])
         plot.imshow(convolved_image, interpolation='nearest', origin='lower')
+        plot.xticks(fontsize=8)
+        plot.yticks(fontsize=8)
+        colorbar = plot.colorbar()
+        colorbar.ax.tick_params(labelsize=8)
+
+        # CLEAN
+        sub = fig.add_subplot(2, 2, 4)
+        sub.set_title('Simulation Clean')
+        clean_image = (clean_cube.sum(0) / clean_cube.shape[0])
+        plot.imshow(clean_image, interpolation='nearest', origin='lower')
         plot.xticks(fontsize=8)
         plot.yticks(fontsize=8)
         colorbar = plot.colorbar()
