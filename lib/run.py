@@ -1,10 +1,11 @@
 # coding=utf-8
 
 ## GENERAL PACKAGES ############################################################
+import math
 import numpy as np
 import logging
 from os.path import splitext
-from math import log, isnan
+from math import log
 from hyperspectral import HyperspectralCube as Cube
 from matplotlib import pyplot as plot
 
@@ -41,7 +42,7 @@ class Run:
     mask: ndarray
         An image of the spatial size of the above cube, filled with zeroes and
         ones. The runner will only try to deconvolve the spaxels where this mask
-        is set to 0. The default mask is filled with zeroes, ie. transparent.
+        is set to 1. The default mask is filled with ones, ie. transparent.
         This mask is also automatically opacified where there are NaN values in
         the input cube.
     variance: ndarray
@@ -105,7 +106,7 @@ class Run:
 
         # Mask
         if mask is None:
-            mask = np.zeros((cube_height, cube_width))
+            mask = np.ones((cube_height, cube_width))
         self.mask = mask
 
         # Flag invalid spaxels : we won't them for iteration and summation
@@ -168,6 +169,7 @@ class Run:
                          dict(zip(self.model.parameters(), max_boundaries)))
 
         # Parameter jumping amplitude
+        # Todo: make this an input parameter
         jumping_amplitude = np.array(np.sqrt(
             (max_boundaries - min_boundaries) ** 2 / 12.
         ) * len(self.model.parameters()) / np.size(cube.data))
@@ -178,6 +180,9 @@ class Run:
         parameters = np.ndarray(
             (max_iterations, cube_height, cube_width, parameters_count)
         )
+
+        # Prepare the chain of "likelihoods"?
+        likelihoods = np.ndarray((max_iterations, cube_height, cube_width))
 
         # Prepare the array of contributions
         # We only store "last iteration" contributions, or the RAM explodes.
@@ -273,6 +278,10 @@ class Run:
                     - 1./2. * np.sum((res/variance_cube)**2) \
                     + 1./2. * np.sum((err/variance_cube)**2)
 
+                # I don't know what I'm doing
+                likelihoods[current_iteration][y][x] = acceptance_ratio
+
+                # Save new parameters only if acceptance ratio is acceptable
                 if min_acceptance_ratio < acceptance_ratio:
                     parameters[current_iteration][y][x] = p_new
                     contributions[y, x] = contribution
@@ -284,6 +293,7 @@ class Run:
 
         # Output
         self.parameters_chain = parameters
+        self.likelihoods = likelihoods
         self.parameters = self.extract_parameters()
         self.convolved_cube = Cube(
             data=self.simulate_convolved(cube_shape, self.parameters),
@@ -308,7 +318,7 @@ class Run:
         w = self.cube.data.shape[2]
         for y in range(0, h):
             for x in range(0, w):
-                if self.mask[y, x] == 0:
+                if self.mask[y, x] == 1:
                     yield (y, x)
 
     ## MCMC ####################################################################
@@ -426,12 +436,12 @@ class Run:
             yy = y + fsf_y
             yyy = fsf_y + fsf_half_height
             if yy < 0 or yy >= cube_height:
-                continue  # spaxel is out of the cube -- EDGE EFFECTS !?
+                continue  # spaxel is out of the cube
             for fsf_x in range(-fsf_half_width, +fsf_half_width+1):
                 xx = x + fsf_x
                 xxx = fsf_x + fsf_half_width
                 if xx < 0 or xx >= cube_width:
-                    continue  # spaxel is out of the cube -- EDGE EFFECTS !?
+                    continue  # spaxel is out of the cube
                 sim[:, yy, xx] += line_conv * fsf[yyy, xxx]
 
         return sim, lsf_fft
@@ -440,7 +450,7 @@ class Run:
 
     def save(self, name, clobber=False):
         """
-        Saves the run data in various files whose filenames are prepended by
+        Save the run data in various files whose filenames are prepended by
         `<name>_`.
         Here's a list of the generated files :
           - <name>_parameters.npy
@@ -464,7 +474,7 @@ class Run:
 
     def save_parameters(self, filepath):
         """
-        Writes the extracted parameters map to a file located at `filepath`.
+        Write the extracted parameters map to a file located at `filepath`.
         Will clobber an existing file. The filepath's extension should be `npy`.
         The saved map is the 3D array holding a parameters set for each spaxel.
         """
@@ -472,6 +482,64 @@ class Run:
         np.save(filepath, self.extract_parameters())
 
     ## PLOTS ###################################################################
+
+    def plot_chain(self, x=None, y=None, filepath=None, bound=False):
+        """
+        Plot the MCMC chain of the spaxel described by the indices (`x`, `y`).
+        If `x` or `y` are not specified, they will default to the center of the
+        spatial image if it is odd-sized, and `floor(size/2)` is it is
+        even-shaped.
+
+        filepath: string
+            If specified, will write the plot to a file instead of showing it.
+            The file will be created at the provided filepath, be it absolute or
+            relative. The extension of the file must be either png or pdf.
+        bound: bool
+            Should we force the plot's Y axis to stretch to boundaries ?
+            It may visually flatten the chain if its walk is not as broad as the
+            boundaries' space.
+        """
+
+        self._check_image_filepath(filepath)
+
+        if x is None:
+            x = math.floor(self.cube.shape[2] / 2.)
+        if y is None:
+            y = math.floor(self.cube.shape[1] / 2.)
+
+        chain = self.parameters_chain[:, y, x, :]
+
+        # print chain
+        # [[  2.27769676e-19   1.57019398e+01   7.37263527e+00]
+        #  [  2.27769676e-19   1.57019398e+01   7.37263527e+00]]
+
+        chain_transposed = np.transpose(chain)
+
+        plot.clf()  # clear current figure
+
+        names = self.model.parameters()
+        rows = 2
+        cols = len(names)
+        bmin = self.model.min_boundaries(self.cube)
+        bmax = self.model.max_boundaries(self.cube)
+
+        # First row: the model's parameters
+        for i in range(len(names)):
+            plot.subplot2grid((rows, cols), (0, i % cols))
+            plot.plot(chain_transposed[i])
+            if bound:
+                plot.ylim(bmin[i], bmax[i])
+            plot.title(names[i], fontsize='small')
+
+        # Second row: the reduced chi
+        plot.subplot2grid((rows, cols), (1, 0), colspan=cols)
+        plot.plot(self.likelihoods[:, y, x])
+        plot.title('acceptance ratio', fontsize='small')
+
+        if filepath is None:
+            plot.show()
+        else:
+            plot.savefig(filepath)
 
     def plot_images(self, filepath=None):
         """
@@ -490,13 +558,7 @@ class Run:
             By default, will not crop.
         """
 
-        if filepath is not None:
-            name, extension = splitext(filepath)
-            supported_extensions = ['.png', '.pdf']
-            if not extension in supported_extensions:
-                raise ValueError("Extension '%s' is not supported, "
-                                 "you may use one of %s",
-                                 extension, ', '.join(supported_extensions))
+        self._check_image_filepath(filepath)
 
         p = self.extract_parameters()
         convolved_cube = self.simulate_convolved(self.data_cube.shape, p)
@@ -557,3 +619,24 @@ class Run:
         colorbar.ax.tick_params(labelsize=8)
 
         return fig
+
+    def _check_image_filepath(self, filepath):
+        """
+        Make sure that the `filepath` is a valid filepath for images.
+        """
+        if filepath is not None:
+            name, extension = splitext(filepath)
+            supported_extensions = ['.png', '.pdf']
+            if not extension in supported_extensions:
+                raise ValueError("Extension '%s' is not supported, "
+                                 "you may use one of %s",
+                                 extension, ', '.join(supported_extensions))
+
+
+# Some test code for the profiler
+# Add the @profile annotation, and run `kernprof -v -l lib/run.py`
+# if __name__ == "__main__":
+#     from instruments import MUSE
+#     cube_test = Cube.from_fits('tests/input/test_cube_01.fits')
+#     inst_test = MUSE()
+#     run_test = Run(cube_test, inst_test, max_iterations=100)

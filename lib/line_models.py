@@ -68,7 +68,7 @@ class SingleGaussianLineModel(LineModel):
 
         a: Amplitude
         c: Center
-        w: Width
+        w: Standard deviation, aka. RMS Width
 
         If `x` is an `ndarray`, the return value will be an `ndarray` too.
         """
