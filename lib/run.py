@@ -69,7 +69,7 @@ class Run:
     max_iterations: int
         The number of iterations after which the chain will end.
     """
-    #@profile
+    @profile
     def __init__(
         self,
         cube,
@@ -142,7 +142,7 @@ class Run:
             # Adjust sigma if it is zero, as we'll divide with it later on
             if clip_sigma == 0:
                 clip_sigma = 1e-20  # arbitrarily low value
-            variance_cube = clip_sigma ** 2
+            variance_cube = np.array(clip_sigma ** 2)
 
         # Save the variance cube and the standard deviation cube (error cube)
         self.variance_cube = variance_cube             # cube of sigma^2
@@ -158,6 +158,13 @@ class Run:
         self.fsf = self.instrument.fsf.as_image(self.cube)
         if self.fsf.shape[0] % 2 == 0 or self.fsf.shape[1] % 2 == 0:
             raise ValueError("FSF *must* be of odd dimensions")
+
+        # Collect the shape of the FSF
+        fh = self.fsf.shape[0]
+        fw = self.fsf.shape[1]
+        # The FSF *must* be odd-shaped, so these are integers
+        fhh = (fh-1)/2  # FSF half height
+        fhw = (fw-1)/2  # FSF half width
 
         # Set up the model to match against, from a class name or an instance
         if isinstance(model, LineModel):
@@ -218,7 +225,7 @@ class Run:
                     np.random.rand(len(self.model.parameters()))
                 parameters[0][y][x] = p_new
 
-        # Initial error/difference between simulation and data
+        # Initial simulation
         sim = np.zeros_like(cube.data)
 
         self.logger.info("Iteration #1")
@@ -235,9 +242,8 @@ class Run:
             sim = sim + contribution
             contributions[y, x, :, :, :] = contribution
 
-        err = cube.data - sim
-        # Initial acceptance ratio
-        ar_old = 0.5 * np.sum((err/variance_cube)**2)
+        # Initial error/difference between simulation and data
+        err_old = cube.data - sim
         current_iteration += 1
 
         # Accepted iterations counter (we accepted the whole first iteration)
@@ -259,7 +265,7 @@ class Run:
                     float(accepted_count) / float(max_accepted_count)
 
             self.logger.info(
-                "\rIteration #%d, %2.0f%%" %
+                "Iteration #%d, %2.0f%%" %
                 (current_iteration+1, 100 * current_acceptance_rate)
             )
 
@@ -288,16 +294,49 @@ class Run:
                 )
 
                 # Remove contribution of parameters of previous iteration
-                ul = err + contributions[y, x]
+                ul = err_old + contributions[y, x]
                 # Add contribution of new parameters
-                res = ul - contribution
+                err_new = ul - contribution
 
                 # Minimum acceptance ratio, picked randomly between -∞ and 0
                 min_acceptance_ratio = log(np.random.rand())
 
                 # Actual acceptance ratio
-                ar_new = 0.5 * np.sum((res/variance_cube)**2)
-                acceptance_ratio = ar_old - ar_new
+                # We optimize by computing only around the spatial area that was
+                # modified, aka the area of the FSF around our current spaxel.
+                err_new_part = err_new[
+                    :,
+                    max(y-fhh, 0):min(y+fhh+1, cube_height),
+                    max(x-fhw, 0):min(x+fhw+1, cube_width)
+                ]
+                err_old_part = err_old[
+                    :,
+                    max(y-fhh, 0):min(y+fhh+1, cube_height),
+                    max(x-fhw, 0):min(x+fhw+1, cube_width)
+                ]
+
+                # Variance may be a scalar, an image or a plain cube
+                # Maybe we'll force variance to be a cube at init so that we may
+                # remove this. Not sure which is faster.
+                var_part = variance_cube
+                if len(variance_cube.shape) == 2:
+                    var_part = variance_cube[
+                        max(y-fhh, 0):min(y+fhh+1, cube_height),
+                        max(x-fhw, 0):min(x+fhw+1, cube_width)
+                    ]
+                elif len(variance_cube.shape) == 3:
+                    var_part = variance_cube[
+                        :,
+                        max(y-fhh, 0):min(y+fhh+1, cube_height),
+                        max(x-fhw, 0):min(x+fhw+1, cube_width)
+                    ]
+
+                # Two sums of small arrays (shaped like the FSF) is faster than
+                # one sum of a big array (shaped like the cube).
+                ar_part_old = 0.5 * bn.nansum((err_old_part/var_part)**2)
+                ar_part_new = 0.5 * bn.nansum((err_new_part/var_part)**2)
+
+                acceptance_ratio = ar_part_old - ar_part_new
 
                 # I don't know what I'm doing
                 likelihoods[current_iteration][y][x] = acceptance_ratio
@@ -306,8 +345,7 @@ class Run:
                 if min_acceptance_ratio < acceptance_ratio:
                     parameters[current_iteration][y][x] = p_new
                     contributions[y, x] = contribution
-                    ar_old = ar_new
-                    err = res
+                    err_old = err_new
                     accepted_count += 1
                 else:
                     parameters[current_iteration][y][x] = p_old
@@ -665,8 +703,8 @@ class Run:
 
 # Some test code for the profiler
 # Add the @profile annotation, and run `kernprof -v -l lib/run.py`
-# if __name__ == "__main__":
-#     from instruments import MUSE
-#     cube_test = Cube.from_fits('tests/input/test_cube_01.fits')
-#     inst_test = MUSE()
-#     run_test = Run(cube_test, inst_test, max_iterations=100)
+if __name__ == "__main__":
+    from instruments import MUSE
+    cube_test = Cube.from_fits('tests/input/test_cube_01.fits')
+    inst_test = MUSE()
+    run_test = Run(cube_test, inst_test, max_iterations=100)
