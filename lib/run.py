@@ -69,7 +69,7 @@ class Run:
     max_iterations: int
         The number of iterations after which the chain will end.
     """
-    @profile
+    #@profile
     def __init__(
         self,
         cube,
@@ -704,7 +704,7 @@ class Run:
 # Some test code for the profiler
 # Add the @profile annotation, and run `kernprof -v -l lib/run.py`
 if __name__ == "__main__":
-    from instruments import MUSE
-    cube_test = Cube.from_fits('tests/input/test_cube_01.fits')
-    inst_test = MUSE()
-    run_test = Run(cube_test, inst_test, max_iterations=100)
+    # from instruments import MUSE
+    # cube_test = Cube.from_fits('tests/input/test_cube_01.fits')
+    # inst_test = MUSE()
+    # run_test = Run(cube_test, inst_test, max_iterations=100)
