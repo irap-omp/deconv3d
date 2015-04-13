@@ -32,7 +32,14 @@ except ImportError:
 ## MH WITHIN GIBBS RUNNER ######################################################
 class Run:
     """
-    todo
+    This is the main runner of the deconvolution.
+    Use it like this :
+    ```
+    cube = Cube.from_fits('my_fits.fits')
+    inst = MUSE()
+    run = Run(cube, inst, max_iterations=1000)
+    run.plot_chain()
+    ```
 
     cube: str | hyperspectral.HyperspectralCube
         The path to a FITS file, or a `hyperspectral.HyperspectralCube` object,
@@ -62,6 +69,7 @@ class Run:
     max_iterations: int
         The number of iterations after which the chain will end.
     """
+    #@profile
     def __init__(
         self,
         cube,
@@ -213,7 +221,7 @@ class Run:
         # Initial error/difference between simulation and data
         sim = np.zeros_like(cube.data)
 
-        print("Iteration #%d" % current_iteration)
+        self.logger.info("Iteration #1")
 
         lsf_fft = None  # memoization holder for performance
         for (y, x) in self.spaxel_iterator():
@@ -228,18 +236,32 @@ class Run:
             contributions[y, x, :, :, :] = contribution
 
         err = cube.data - sim
+        # Initial acceptance ratio
+        ar_old = 0.5 * np.sum((err/variance_cube)**2)
         current_iteration += 1
+
+        # Accepted iterations counter (we accepted the whole first iteration)
+        accepted_count = cube_width * cube_height
 
         # Loop as many times as specified, as long as the acceptance is OK
         while \
                 current_iteration < max_iterations \
                 and \
-                (  # fixme: unused condition
+                (
                     current_acceptance_rate > min_acceptance_rate or
                     current_acceptance_rate == 0.
                 ):
 
-            print("Iteration #%d" % current_iteration)
+            # Acceptance rate
+            max_accepted_count = cube_width * cube_height * current_iteration
+            if max_accepted_count > 0:
+                current_acceptance_rate = \
+                    float(accepted_count) / float(max_accepted_count)
+
+            self.logger.info(
+                "\rIteration #%d, %2.0f%%" %
+                (current_iteration+1, 100 * current_acceptance_rate)
+            )
 
             # Loop through all spaxels
             for (y, x) in self.spaxel_iterator():
@@ -274,9 +296,8 @@ class Run:
                 min_acceptance_ratio = log(np.random.rand())
 
                 # Actual acceptance ratio
-                acceptance_ratio = \
-                    - 1./2. * np.sum((res/variance_cube)**2) \
-                    + 1./2. * np.sum((err/variance_cube)**2)
+                ar_new = 0.5 * np.sum((res/variance_cube)**2)
+                acceptance_ratio = ar_old - ar_new
 
                 # I don't know what I'm doing
                 likelihoods[current_iteration][y][x] = acceptance_ratio
@@ -285,7 +306,9 @@ class Run:
                 if min_acceptance_ratio < acceptance_ratio:
                     parameters[current_iteration][y][x] = p_new
                     contributions[y, x] = contribution
+                    ar_old = ar_new
                     err = res
+                    accepted_count += 1
                 else:
                     parameters[current_iteration][y][x] = p_old
 
@@ -428,21 +451,28 @@ class Run:
         else:
             line_conv, _ = convolve_1d(line, lsf_fft, compute_fourier=False)
 
-        # Spatial convolution: we iterate over the neighboring spaxels and
-        # add the line model, scaled by the FSF.
-        fsf_half_height = (fsf.shape[1]-1)/2
-        fsf_half_width = (fsf.shape[0]-1)/2
-        for fsf_y in range(-fsf_half_height, +fsf_half_height+1):
-            yy = y + fsf_y
-            yyy = fsf_y + fsf_half_height
-            if yy < 0 or yy >= cube_height:
-                continue  # spaxel is out of the cube
-            for fsf_x in range(-fsf_half_width, +fsf_half_width+1):
-                xx = x + fsf_x
-                xxx = fsf_x + fsf_half_width
-                if xx < 0 or xx >= cube_width:
-                    continue  # spaxel is out of the cube
-                sim[:, yy, xx] += line_conv * fsf[yyy, xxx]
+        # Collect the shape of the FSF
+        fh = fsf.shape[0]
+        fw = fsf.shape[1]
+        # The FSF *must* be odd-shaped, so these are integers
+        fhh = (fh-1)/2  # FSF half height
+        fhw = (fw-1)/2  # FSF half width
+
+        # Create the contribution cube, through spatial convolution
+        local_contrib = fsf * line_conv[:, np.newaxis][:, np.newaxis]
+
+        # Copy the contribution into a cube sized like the input cube
+        # We only copy the portions that intersect spatially
+        sim[
+            :,
+            max(y-fhh, 0):min(y+fhh+1, cube_height),
+            max(x-fhw, 0):min(x+fhw+1, cube_width)
+        ]\
+            = local_contrib[
+                :,
+                max(fhh-y, 0):min(cube_height+fhh-y, fh),
+                max(fhw-x, 0):min(cube_width+fhw-x,  fw),
+            ]
 
         return sim, lsf_fft
 

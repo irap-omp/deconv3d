@@ -1,3 +1,11 @@
+0.2.0 -- 13-04-2015
+-------------------
+
+- Add some plots
+- Display the acceptance ratio for each iteration
+- Miscellaneous optimizations
+
+
 0.1.0 -- 01-02-2015
 -------------------
 
