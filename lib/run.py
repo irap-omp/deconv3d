@@ -703,7 +703,7 @@ class Run:
 
 # Some test code for the profiler
 # Add the @profile annotation, and run `kernprof -v -l lib/run.py`
-if __name__ == "__main__":
+# if __name__ == "__main__":
     # from instruments import MUSE
     # cube_test = Cube.from_fits('tests/input/test_cube_01.fits')
     # inst_test = MUSE()
