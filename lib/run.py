@@ -24,9 +24,9 @@ try:
 except ImportError:
     import numpy as bn
 try:
-    from astropy.io.fits import Header
+    from astropy.io.fits import Header, getdata
 except ImportError:
-    from pyfits import Header
+    from pyfits import Header, getdata
 
 
 ## MH WITHIN GIBBS RUNNER ######################################################
@@ -115,12 +115,17 @@ class Run:
         # Mask
         if mask is None:
             mask = np.ones((cube_height, cube_width))
+        if isinstance(mask, basestring):
+            mask = getdata(mask)
         self.mask = mask
 
         # Flag invalid spaxels : we won't them for iteration and summation
         # By default, we flag as invalid all spaxels that have a nan value
         # somewhere in the spectrum.
-        self.mask[np.isnan(np.sum(self.data_cube, 0))] = 1
+        self.mask[np.isnan(np.sum(self.data_cube, 0))] = 0
+
+        # Count the number of spaxels we're going to parse
+        spaxels_count = np.sum(self.mask)
 
         # Set up the variance
         if variance is not None:
@@ -247,7 +252,7 @@ class Run:
         current_iteration += 1
 
         # Accepted iterations counter (we accepted the whole first iteration)
-        accepted_count = cube_width * cube_height
+        accepted_count = spaxels_count
 
         # Loop as many times as specified, as long as the acceptance is OK
         while \
@@ -259,7 +264,7 @@ class Run:
                 ):
 
             # Acceptance rate
-            max_accepted_count = cube_width * cube_height * current_iteration
+            max_accepted_count = spaxels_count * current_iteration
             if max_accepted_count > 0:
                 current_acceptance_rate = \
                     float(accepted_count) / float(max_accepted_count)
