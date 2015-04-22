@@ -96,3 +96,22 @@ class RunTest(unittest.TestCase):
         run.plot_chain()
 
         # run.save('run_003', clobber=True)
+
+    def test_numpy_extrude(self):
+        a2d = np.array([[0, 1],
+                        [2, 0]])
+        a1d = np.array([1, 2, 3])
+
+        b3d = np.array([
+            [[0, 1],
+             [2, 0]],
+            [[0, 2],
+             [4, 0]],
+            [[0, 3],
+             [6, 0]],
+        ])
+
+        # Yep. Not trivial, but fast
+        a3d = a2d * a1d[:, np.newaxis][:, np.newaxis]
+
+        self.assertEqual(0, np.sum(a3d-b3d))
