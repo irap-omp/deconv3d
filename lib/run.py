@@ -1,6 +1,7 @@
 # coding=utf-8
 
 ## GENERAL PACKAGES ############################################################
+from logging import Logger
 import math
 import numpy as np
 import logging
@@ -539,13 +540,14 @@ class Run:
         clobber: bool
             When set to true, will OVERWRITE existing files.
         """
-        self.save_parameters("%s_parameters.npy" % name)
+        self.save_parameters_npy("%s_parameters.npy" % name)
+        self.save_matlab("%s_matlab.mat" % name)
         self.plot_images("%s_images.png" % name)
 
         self.convolved_cube.to_fits("%s_convolved_cube.fits" % name, clobber)
         self.clean_cube.to_fits("%s_clean_cube.fits" % name, clobber)
 
-    def save_parameters(self, filepath):
+    def save_parameters_npy(self, filepath):
         """
         Write the extracted parameters map to a file located at `filepath`.
         Will clobber an existing file. The filepath's extension should be `npy`.
@@ -553,6 +555,30 @@ class Run:
         """
 
         np.save(filepath, self.extract_parameters())
+
+    def save_matlab(self, filepath):
+        """
+        Write some data to a file located at `filepath`.
+        Will clobber an existing file. The filepath's extension should be `mat`,
+        for Matlab.
+
+        - parameters:
+            The 3D array holding a parameters set for each spaxel.
+            Shape: (cube_height, cube_width, parameters_count)
+        - chain:
+            The whole chain of parameters.
+            Shape: (max_iterations, cube_height, cube_width, parameters_count)
+
+        This requires `scipy`.
+        """
+        try:
+            from scipy.io import savemat
+            savemat(filepath, dict(
+                parameters=self.extract_parameters(),
+                chain=self.parameters_chain
+            ))
+        except ImportError:
+            logger.error("The `scipy` package is required to save for matlab.")
 
     ## PLOTS ###################################################################
 

@@ -23,6 +23,11 @@ class RunTest(unittest.TestCase):
 
     fits_muse_filename = join(fits_folder, 'test_cube_01.fits')
 
+    data_galpak1_filename = join(fits_folder, 'GalPaK_cube_1101_size4.08_flux1e-16_incl60_vmax199_disp80_seeing1.0_PAm50.fits')
+    mask_galpak1_filename = join(fits_folder, 'GalPaK_cube_1101_size4.08_flux1e-16_incl60_vmax199_disp80_seeing1.0_PAm50_mask.fits')
+
+    data_galpak2_filename = join(fits_folder, 'input_snrx10GalPaK_cube_1101_size4.08_flux1e-16_incl60_vmax199_disp80_seeing1.00_PA_m50.fits')
+
     def test_init_with_empty_cube(self):
         cube = Cube()
         inst = MUSE()
@@ -91,11 +96,51 @@ class RunTest(unittest.TestCase):
         cube = Cube.from_fits(self.fits_muse_filename)
         inst = MUSE()
 
-        run = Run(cube, inst, max_iterations=1000)
+        run = Run(cube, inst, max_iterations=666)
 
         run.plot_chain()
 
-        # run.save('run_003', clobber=True)
+    def test_with_galpak1_data(self):
+        cube = Cube.from_fits(self.data_galpak1_filename)
+        inst = MUSE()
+
+        self.assertFalse(cube.is_empty())
+
+        run = Run(
+            cube, inst,
+            mask=self.mask_galpak1_filename,
+            max_iterations=44444
+        )
+
+        run.save('run_galpak1', clobber=True)
+
+    def test_with_galpak2_data(self):
+        # FIX THESE DAMN HEADERS
+        from astropy.io.fits import setval
+        setval(self.data_galpak2_filename, keyword='CDELT1', value=5.5555555555555e-05, ext=0)
+        setval(self.data_galpak2_filename, keyword='CDELT2', value=5.5555555555555e-05, ext=0)
+        setval(self.data_galpak2_filename, keyword='CRVAL1', value=1.0, ext=0)
+        setval(self.data_galpak2_filename, keyword='CRVAL2', value=1.0, ext=0)
+        setval(self.data_galpak2_filename, keyword='CRPIX1', value=1.0, ext=0)
+        setval(self.data_galpak2_filename, keyword='CRPIX2', value=1.0, ext=0)
+        setval(self.data_galpak2_filename, keyword='CUNIT1', value='deg     ', ext=0)
+        setval(self.data_galpak2_filename, keyword='CUNIT2', value='deg     ', ext=0)
+        setval(self.data_galpak2_filename, keyword='CTYPE1', value='RA---TAN', ext=0)
+        setval(self.data_galpak2_filename, keyword='CTYPE2', value='DEC--TAN', ext=0)
+        ########################
+
+        cube = Cube.from_fits(self.data_galpak2_filename)
+        inst = MUSE()
+
+        self.assertFalse(cube.is_empty())
+
+        run = Run(
+            cube, inst,
+            #mask=self.mask_galpak1_filename,
+            max_iterations=100000
+        )
+
+        run.save('run_galpak2', clobber=True)
 
     def test_numpy_extrude(self):
         a2d = np.array([[0, 1],
