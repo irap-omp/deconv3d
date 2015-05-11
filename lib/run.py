@@ -543,6 +543,7 @@ class Run:
         self.save_parameters_npy("%s_parameters.npy" % name)
         self.save_matlab("%s_matlab.mat" % name)
         self.plot_images("%s_images.png" % name)
+        self.plot_chain(filepath="%s_chain.png" % name)
 
         self.convolved_cube.to_fits("%s_convolved_cube.fits" % name, clobber)
         self.clean_cube.to_fits("%s_clean_cube.fits" % name, clobber)
@@ -642,7 +643,10 @@ class Run:
 
     def plot_images(self, filepath=None):
         """
-        Plot a mosaic of images of the cropped (along z) cubes,
+        Plot a mosaic of relevant images :
+        - the cropped (along z) cubes,
+        - the FSF
+        - the mask
         and then either show it or save it to a file.
 
         filepath: string
@@ -677,7 +681,7 @@ class Run:
                              top=0.95, left=0.05, right=0.95)
 
         # MEASURE
-        sub = fig.add_subplot(2, 2, 1)
+        sub = fig.add_subplot(2, 3, 1)
         sub.set_title('Measured')
         measured_cube = data_cube[:, :, :]
         measured_image = (measured_cube.sum(0) / measured_cube.shape[0])
@@ -688,7 +692,7 @@ class Run:
         colorbar.ax.tick_params(labelsize=8)
 
         # CONVOLVED
-        sub = fig.add_subplot(2, 2, 2)
+        sub = fig.add_subplot(2, 3, 2)
         sub.set_title('Simulation Convolved')
         convolved_image = (convolved_cube.sum(0) / convolved_cube.shape[0])
         plot.imshow(convolved_image, interpolation='nearest', origin='lower')
@@ -697,8 +701,18 @@ class Run:
         colorbar = plot.colorbar()
         colorbar.ax.tick_params(labelsize=8)
 
+        # FSF
+        sub = fig.add_subplot(2, 3, 3)
+        sub.set_title('FSF')
+        fsf_image = self.fsf
+        plot.imshow(fsf_image, interpolation='nearest', origin='lower')
+        plot.xticks(fontsize=8)
+        plot.yticks(fontsize=8)
+        colorbar = plot.colorbar()
+        colorbar.ax.tick_params(labelsize=8)
+
         # CLEAN
-        sub = fig.add_subplot(2, 2, 4)
+        sub = fig.add_subplot(2, 3, 4)
         sub.set_title('Simulation Clean')
         clean_image = (clean_cube.sum(0) / clean_cube.shape[0])
         plot.imshow(clean_image, interpolation='nearest', origin='lower')
@@ -707,11 +721,10 @@ class Run:
         colorbar = plot.colorbar()
         colorbar.ax.tick_params(labelsize=8)
 
-        # FSF
-        sub = fig.add_subplot(2, 2, 3)
-        sub.set_title('FSF')
-        fsf_image = self.fsf
-        plot.imshow(fsf_image, interpolation='nearest', origin='lower')
+        # MASK
+        sub = fig.add_subplot(2, 3, 5)
+        sub.set_title('Mask')
+        plot.imshow(self.mask, interpolation='nearest', origin='lower')
         plot.xticks(fontsize=8)
         plot.yticks(fontsize=8)
         colorbar = plot.colorbar()
