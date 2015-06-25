@@ -12,6 +12,7 @@ from deconv3d import Run, MUSE
 
 ## ACTUAL TESTS ################################################################
 from lib.line_models import SingleGaussianLineModel
+from lib.masks import above_percentile
 
 
 class RunTest(unittest.TestCase):
@@ -26,7 +27,8 @@ class RunTest(unittest.TestCase):
     data_galpak1_filename = join(fits_folder, 'GalPaK_cube_1101_size4.08_flux1e-16_incl60_vmax199_disp80_seeing1.0_PAm50.fits')
     mask_galpak1_filename = join(fits_folder, 'GalPaK_cube_1101_size4.08_flux1e-16_incl60_vmax199_disp80_seeing1.0_PAm50_mask.fits')
 
-    data_galpak2_filename = join(fits_folder, 'input_snrx10GalPaK_cube_1101_size4.08_flux1e-16_incl60_vmax199_disp80_seeing1.00_PA_m50.fits')
+    data_galpak2_filename = join(fits_folder, 'input_snrx10GalPaK_cube_1101_size4.08_flux1e-16_incl60_vmax199_disp80_seeing1.00_PA_m50_renorm.fits')
+    mask_galpak2_filename = join(fits_folder, 'input_snrx10GalPaK_cube_1101_size4.08_flux1e-16_incl60_vmax199_disp80_seeing1.00_PA_m50_mask.fits')
 
     def test_init_with_empty_cube(self):
         cube = Cube()
@@ -100,6 +102,38 @@ class RunTest(unittest.TestCase):
 
         run.plot_chain()
 
+    def test_masks(self):
+        cube = Cube.from_fits(self.fits_muse_filename)
+        inst = MUSE()
+
+        run = Run(cube, inst,
+                  mask=above_percentile(cube),
+                  max_iterations=42)
+
+        run.plot_images()
+
+    def test_rtnorm(self):
+        from lib.rtnorm import rtnorm
+        from sys import maxint
+
+        # Generate an array with one number
+        r = rtnorm(0, maxint)
+
+        self.assertTrue(isinstance(r, np.ndarray))
+        self.assertTrue(len(r) == 1)
+        self.assertGreaterEqual(r, 0)
+        self.assertLessEqual(r, maxint)
+
+        # Generate an array with 42 numbers
+        r = rtnorm(0, maxint, size=42)
+
+        self.assertTrue(isinstance(r, np.ndarray))
+        self.assertTrue(len(r) == 42)
+        self.assertGreaterEqual(r, 0)
+        self.assertLessEqual(r, maxint)
+
+    ### GARBAGE TESTS ##########################################################
+
     def test_with_galpak1_data(self):
         cube = Cube.from_fits(self.data_galpak1_filename)
         inst = MUSE()
@@ -109,10 +143,10 @@ class RunTest(unittest.TestCase):
         run = Run(
             cube, inst,
             mask=self.mask_galpak1_filename,
-            max_iterations=44444
+            max_iterations=42
         )
 
-        run.save('run_galpak1', clobber=True)
+        run.save('run_004', clobber=True)
 
     def test_with_galpak2_data(self):
         # FIX THESE DAMN HEADERS
@@ -132,15 +166,19 @@ class RunTest(unittest.TestCase):
         cube = Cube.from_fits(self.data_galpak2_filename)
         inst = MUSE()
 
+        print("HEADER")
+        print(cube.meta['fits'])
+
         self.assertFalse(cube.is_empty())
 
         run = Run(
             cube, inst,
-            #mask=self.mask_galpak1_filename,
-            max_iterations=100000
+            mask=self.mask_galpak2_filename,
+            jump_amplitude=2.0,
+            max_iterations=10
         )
 
-        run.save('run_galpak2', clobber=True)
+        run.save('run_galpak_renorm_2', clobber=True)
 
     def test_numpy_extrude(self):
         a2d = np.array([[0, 1],

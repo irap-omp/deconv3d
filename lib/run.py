@@ -29,8 +29,12 @@ try:
 except ImportError:
     from pyfits import Header, getdata
 
+## SOME CONSTANTS ##############################################################
+CIRCLE = np.pi * 2.
+CIRCLE_4TH = np.pi / 2.
 
-## MH WITHIN GIBBS RUNNER ######################################################
+
+## MCMC RUNNER #################################################################
 class Run:
     """
     This is the main runner of the deconvolution.
@@ -67,6 +71,11 @@ class Run:
         broadcasted to each spaxel.
         When not defined, the initial parameters will be picked at random
         between their respective boundaries.
+    jump_amplitude: float | ndarray
+        You can tweak the Cauchy jump using this coefficient.
+        You can provide a ndarray of the dimensions of the parameters of your
+        line model, to customize the jump amplitude of each parameter.
+        The default value of this is 1, which means no tweaking.
     max_iterations: int
         The number of iterations after which the chain will end.
     """
@@ -79,6 +88,7 @@ class Run:
         variance=None,
         model=SingleGaussianLineModel,
         initial_parameters=None,
+        jump_amplitude=1.0,
         max_iterations=10000,
         min_acceptance_rate=0.05
     ):
@@ -132,15 +142,17 @@ class Run:
         if variance is not None:
             if isinstance(variance, basestring):
                 variance = Cube.from_fits(variance)
-            if not isinstance(variance, Cube):
+            if isinstance(variance, Cube):
+                if variance.data is None:
+                    self.logger.warning("Provided variance cube is empty")
+                self.logger.info("Using provided variance : %s" % variance)
+                variance_cube = variance.data
+                self.logger.info("Replacing zeros in the variance cube by 1e12")
+                variance_cube = np.where(variance_cube == 0.0, 1e12, variance_cube)
+            if isinstance(variance, np.ndarray):
+                variance_cube = variance
+            else:
                 raise TypeError("Provided variance is not a Cube")
-            if variance.data is None:
-                self.logger.warning("Provided variance cube is empty")
-            self.logger.info("Using provided variance : %s" % variance)
-            variance_cube = variance.data
-            self.logger.info("Replacing zeros in the variance cube by 1e12")
-            variance_cube = np.where(variance_cube == 0.0, 1e12, variance_cube)
-            #variance = np.where(np.isnan(cube_data), 1e12, variance)
         else:
             # Clip data, and collect standard deviation sigma
             sub_data = np.copy(cube.data[2:-2, 2:-4, 2:4])
@@ -165,6 +177,10 @@ class Run:
         if self.fsf.shape[0] % 2 == 0 or self.fsf.shape[1] % 2 == 0:
             raise ValueError("FSF *must* be of odd dimensions")
 
+        # Assert that spread functions are normalized (we can remove this)
+        assert np.nansum(self.fsf) == 1.
+        assert np.nansum(self.lsf) == 1.
+
         # Collect the shape of the FSF
         fh = self.fsf.shape[0]
         fw = self.fsf.shape[1]
@@ -181,8 +197,8 @@ class Run:
                 raise TypeError("Provided model is not a LineModel")
 
         # Parameters boundaries
-        min_boundaries = np.array(self.model.min_boundaries(cube))
-        max_boundaries = np.array(self.model.max_boundaries(cube))
+        min_boundaries = np.array(self.model.min_boundaries(self))
+        max_boundaries = np.array(self.model.max_boundaries(self))
 
         self.logger.info("Min boundaries : %s" %
                          dict(zip(self.model.parameters(), min_boundaries)))
@@ -190,8 +206,7 @@ class Run:
                          dict(zip(self.model.parameters(), max_boundaries)))
 
         # Parameter jumping amplitude
-        # Todo: make this an input parameter
-        jumping_amplitude = np.array(np.sqrt(
+        jumping_amplitude = jump_amplitude * np.array(np.sqrt(
             (max_boundaries - min_boundaries) ** 2 / 12.
         ) * len(self.model.parameters()) / np.size(cube.data))
 
@@ -229,6 +244,10 @@ class Run:
                 p_new = \
                     min_boundaries + (max_boundaries - min_boundaries) * \
                     np.random.rand(len(self.model.parameters()))
+
+                # fixme: But amplitude should start at zero (test)
+                #p_new[0] = 0.0
+
                 parameters[0][y][x] = p_new
 
         # Initial simulation
@@ -281,6 +300,10 @@ class Run:
                 # Compute a new set of parameters for this spaxel
                 p_old = np.array(parameters[current_iteration-1][y][x].tolist())
                 p_new = self.jump_from(p_old, jumping_amplitude)
+
+                # Now, post-process the parameters, for example to apply Gibbs
+                # within Metropolis Hastings for the amplitude
+                self.model.post_jump(self, p_old, p_new)
 
                 # Check if new parameters are within the boundaries
                 # It happens quite often that parameters are out of boundaries,
@@ -339,8 +362,8 @@ class Run:
 
                 # Two sums of small arrays (shaped like the FSF) is faster than
                 # one sum of a big array (shaped like the cube).
-                ar_part_old = 0.5 * bn.nansum((err_old_part/var_part)**2)
-                ar_part_new = 0.5 * bn.nansum((err_new_part/var_part)**2)
+                ar_part_old = 0.5 * bn.nansum((err_old_part / var_part) ** 2)
+                ar_part_new = 0.5 * bn.nansum((err_new_part / var_part) ** 2)
 
                 acceptance_ratio = ar_part_old - ar_part_new
 
@@ -398,7 +421,7 @@ class Run:
         Override this to provide your own proposal density.
         """
         size = len(parameters)
-        random_uniforms = np.random.uniform(-np.pi / 2., np.pi / 2., size=size)
+        random_uniforms = np.random.uniform(-CIRCLE_4TH, CIRCLE_4TH, size=size)
         return parameters + amplitude * np.tan(random_uniforms)
 
     def extract_parameters(self, percentage=20.):
@@ -406,6 +429,7 @@ class Run:
         Extracts the mean parameters from the chain of parameters from the last
         `percentage`% parameters.
         Returns a 2D array of parameters sets. (one parameter set per spaxel)
+        Access it Y first, then X : params[Y][X].
         """
 
         s = (100. - percentage) * self.parameters_chain.shape[0] / 100.
@@ -429,12 +453,13 @@ class Run:
 
         # Initialize an empty output cube
         sim = np.zeros(shape)
+        z = shape[0]
 
         # For each spaxel, add its line
         for (y, x) in self.spaxel_iterator():
 
             # Contribution of the line, not convolved
-            line = self.model.modelize(range(0, shape[0]), parameters[y, x])
+            line = self.model.modelize(self, range(0, z), parameters[y, x])
 
             sim[:, y, x] = line
 
@@ -548,6 +573,9 @@ class Run:
         self.convolved_cube.to_fits("%s_convolved_cube.fits" % name, clobber)
         self.clean_cube.to_fits("%s_clean_cube.fits" % name, clobber)
 
+        np.save("%s_fsf.npy" % name, self.fsf)
+        np.save("%s_lsf.npy" % name, self.lsf)
+
     def save_parameters_npy(self, filepath):
         """
         Write the extracted parameters map to a file located at `filepath`.
@@ -620,8 +648,8 @@ class Run:
         names = self.model.parameters()
         rows = 2
         cols = len(names)
-        bmin = self.model.min_boundaries(self.cube)
-        bmax = self.model.max_boundaries(self.cube)
+        bmin = self.model.min_boundaries(self)
+        bmax = self.model.max_boundaries(self)
 
         # First row: the model's parameters
         for i in range(len(names)):
@@ -644,15 +672,15 @@ class Run:
     def plot_images(self, filepath=None):
         """
         Plot a mosaic of relevant images :
-        - the cropped (along z) cubes,
-        - the FSF
-        - the mask
+            - the cropped (along z) cubes,
+            - the FSF
+            - the mask
         and then either show it or save it to a file.
 
         filepath: string
             If specified, will write the plot to a file instead of showing it.
-            The file will be created at the provided absolute or relative filepath.
-            The extension of the file must be either png or pdf.
+            The file will be created at the provided absolute or relative path.
+            The extension of the file must be either `png` or `pdf`.
         z_crop: None|int
             The maximum and total length of the crop (in pixels) along z,
             centered on the galaxy's z position.

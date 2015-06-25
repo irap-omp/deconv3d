@@ -1,3 +1,5 @@
+from astropy.units import Unit
+from hyperspectral import HyperspectralCube, Axis
 import numpy as np
 
 from convolution import convolve_3d_same
@@ -115,3 +117,32 @@ class MUSE(Instrument):
                                               ba=fsf_ba)
 
         Instrument.__init__(self, lsf=lsf, fsf=fsf)
+
+    def build_cube(self, data):
+
+        meta = {
+            'CDELT1': 5.5555555555555e-05,
+            'CDELT2': 5.5555555555555e-05,
+            'CDELT3': 1.25,
+            'CRVAL1': 1.0,
+            'CRVAL2': 1.0,
+            'CRVAL3': 6564.0,
+            'CRPIX1': 1.0,
+            'CRPIX2': 1.0,
+            'CRPIX3': 15.0,
+            'CUNIT1': 'deg     ',
+            'CUNIT2': 'deg     ',
+            'CUNIT3': 'Angstrom',
+            'CTYPE1': 'RA---TAN',
+            'CTYPE2': 'DEC--TAN',
+        }
+        x = Axis('x', meta['CRVAL1'], meta['CDELT1'], Unit(meta['CUNIT1']))
+        y = Axis('y', meta['CRVAL2'], meta['CDELT2'], Unit(meta['CUNIT2']))
+        z = Axis('z', meta['CRVAL3'], meta['CDELT3'], Unit(meta['CUNIT3']))
+
+        from astropy.io import fits
+        header = fits.Header()
+        for name in meta:
+            header[name] = meta[name]
+
+        return HyperspectralCube(data=data, meta={'fits': header}, x=x, y=y, z=z)
