@@ -38,9 +38,8 @@ your system, as `deconv3d` is referenced on the official [python package index]
 Manually
 --------
 
-(todo)
+Running `python setup.py install` should do the trick.
 
-Running `python setup.py` should do the trick.
 
 Mandatory Dependencies
 ----------------------

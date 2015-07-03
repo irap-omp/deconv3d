@@ -1,6 +1,7 @@
 # coding=utf-8
 
 ## GENERAL PACKAGES ############################################################
+import sys
 from logging import Logger
 import math
 import numpy as np
@@ -9,6 +10,7 @@ from os.path import splitext
 from math import log
 from hyperspectral import HyperspectralCube as Cube
 from matplotlib import pyplot as plot
+from lib.rtnorm import rtnorm
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('deconv3d')
@@ -32,6 +34,7 @@ except ImportError:
 ## SOME CONSTANTS ##############################################################
 CIRCLE = np.pi * 2.
 CIRCLE_4TH = np.pi / 2.
+MAXIMUM = sys.maxint
 
 
 ## MCMC RUNNER #################################################################
@@ -90,7 +93,7 @@ class Run:
         initial_parameters=None,
         jump_amplitude=1.0,
         max_iterations=10000,
-        min_acceptance_rate=0.05
+        min_acceptance_rate=0.01
     ):
 
         # Assign the logger to a property for convenience
@@ -210,6 +213,10 @@ class Run:
             (max_boundaries - min_boundaries) ** 2 / 12.
         ) * len(self.model.parameters()) / np.size(cube.data))
 
+        # fixme
+        # Make sure that the Gibbs'ed parameters have a jumping amplitude of 0
+        jumping_amplitude[0] = 0
+
         # Prepare the chain of parameters
         # One set of parameters per iteration, per spaxel
         parameters_count = len(self.model.parameters())
@@ -301,9 +308,12 @@ class Run:
                 p_old = np.array(parameters[current_iteration-1][y][x].tolist())
                 p_new = self.jump_from(p_old, jumping_amplitude)
 
+                # print p_new
+
                 # Now, post-process the parameters, for example to apply Gibbs
                 # within Metropolis Hastings for the amplitude
-                self.model.post_jump(self, p_old, p_new)
+                # fixme: nope
+                #self.model.post_jump(self, p_old, p_new)
 
                 # Check if new parameters are within the boundaries
                 # It happens quite often that parameters are out of boundaries,
@@ -311,7 +321,7 @@ class Run:
                 too_low = np.array(p_new < min_boundaries)
                 too_high = np.array(p_new > max_boundaries)
                 if too_low.any() or too_high.any():
-                    # print "New proposed parameters are out of boundaries."
+                    #print "New proposed parameters are out of boundaries."
                     parameters[current_iteration][y][x] = p_old
                     continue
 
@@ -330,35 +340,31 @@ class Run:
                 # Minimum acceptance ratio, picked randomly between -∞ and 0
                 min_acceptance_ratio = log(np.random.rand())
 
+                # Compute the limits of the affected section
+                y_min = max(y-fhh, 0)
+                y_max = min(y+fhh+1, cube_height)
+                x_min = max(x-fhw, 0)
+                x_max = min(x+fhw+1, cube_width)
+
                 # Actual acceptance ratio
                 # We optimize by computing only around the spatial area that was
                 # modified, aka the area of the FSF around our current spaxel.
-                err_new_part = err_new[
-                    :,
-                    max(y-fhh, 0):min(y+fhh+1, cube_height),
-                    max(x-fhw, 0):min(x+fhw+1, cube_width)
-                ]
-                err_old_part = err_old[
-                    :,
-                    max(y-fhh, 0):min(y+fhh+1, cube_height),
-                    max(x-fhw, 0):min(x+fhw+1, cube_width)
-                ]
+                err_new_part = err_new[:, y_min:y_max, x_min:x_max]
+                err_old_part = err_old[:, y_min:y_max, x_min:x_max]
+
+                # fixme
+                ul_part = ul[:, y_min:y_max, x_min:x_max]
+                contribution_part = contribution[:, y_min:y_max, x_min:x_max]
+                ####
 
                 # Variance may be a scalar, an image or a plain cube
                 # Maybe we'll force variance to be a cube at init so that we may
                 # remove this. Not sure which is faster.
                 var_part = variance_cube
                 if len(variance_cube.shape) == 2:
-                    var_part = variance_cube[
-                        max(y-fhh, 0):min(y+fhh+1, cube_height),
-                        max(x-fhw, 0):min(x+fhw+1, cube_width)
-                    ]
+                    var_part = variance_cube[y_min:y_max, x_min:x_max]
                 elif len(variance_cube.shape) == 3:
-                    var_part = variance_cube[
-                        :,
-                        max(y-fhh, 0):min(y+fhh+1, cube_height),
-                        max(x-fhw, 0):min(x+fhw+1, cube_width)
-                    ]
+                    var_part = variance_cube[:, y_min:y_max, x_min:x_max]
 
                 # Two sums of small arrays (shaped like the FSF) is faster than
                 # one sum of a big array (shaped like the cube).
@@ -372,12 +378,34 @@ class Run:
 
                 # Save new parameters only if acceptance ratio is acceptable
                 if min_acceptance_ratio < acceptance_ratio:
-                    parameters[current_iteration][y][x] = p_new
                     contributions[y, x] = contribution
                     err_old = err_new
                     accepted_count += 1
+                    p_end = p_new.copy()
                 else:
-                    parameters[current_iteration][y][x] = p_old
+                    # Otherwise the new parameters are the same as the old ones
+                    p_end = p_old.copy()
+
+                parameters[current_iteration][y][x] = p_end
+
+                # fixme
+                # GIBBS
+                ra = max_boundaries[0] ** 2  # apriori variance of amplitude
+                ro = ra / (1 + ra * np.sum(contribution_part ** 2 / var_part))
+                mu = ro * np.sum(contribution_part * ul_part / var_part)
+                a = rtnorm(min_boundaries[0], max_boundaries[0], mu=mu, sigma=np.sqrt(ro))[0]
+                # and now we re-compute everything
+                p_end[0] = a
+                contribution, lsf_fft = self.contribution_of_spaxel(
+                    x, y, p_end,
+                    cube_width, cube_height, cube_depth,
+                    self.fsf, self.lsf, lsf_fft=lsf_fft
+                )
+                err_new = ul - contribution
+                # and we write it
+                contributions[y, x] = contribution
+                err_old = err_new
+                parameters[current_iteration][y][x] = p_end
 
             current_iteration += 1
 
@@ -385,6 +413,7 @@ class Run:
         self.parameters_chain = parameters
         self.likelihoods = likelihoods
         self.parameters = self.extract_parameters()
+        print "Extracted Parameters : %s" % str(self.parameters)
         self.convolved_cube = Cube(
             data=self.simulate_convolved(cube_shape, self.parameters),
             meta=self.cube.meta
@@ -512,7 +541,7 @@ class Run:
         sim = np.zeros((cube_depth, cube_height, cube_width))
 
         # Raw line model
-        line = self.model.modelize(range(0, cube_depth), parameters)
+        line = self.model.modelize(self, range(0, cube_depth), parameters)
 
         # Spectral convolution: using the Fast Fourier Transform of the LSF
         if lsf_fft is None:

@@ -1,14 +1,23 @@
+0.3.0 -- 25-06-2015
+-------------------
+
+- Add support for masks.
+- Add a simple `above_percentile` mask generator.
+- Fix an issue with the amplitude max boundary.
+- Implement Gibbs within Metropolis-Hastings.
+
+
 0.2.0 -- 13-04-2015
 -------------------
 
-- Add some plots
-- Display the acceptance ratio for each iteration
-- Miscellaneous optimizations
+- Add some plots.
+- Display the acceptance ratio for each iteration.
+- Optimize heavily.
 
 
 0.1.0 -- 01-02-2015
 -------------------
 
-- Initial implementation, without any optimization
-- Support for user-defined line models
-- Basic support for input FITS files
+- Initial implementation, without any optimization.
+- Support user-defined line models.
+- Add basic support for input FITS files.

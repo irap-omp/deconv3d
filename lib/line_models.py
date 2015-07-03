@@ -1,3 +1,4 @@
+from numpy.core.numeric import Infinity
 import numpy as np
 from rtnorm import rtnorm
 
@@ -82,8 +83,12 @@ class SingleGaussianLineModel(LineModel):
         """
         Mutates the `new_parameters` right after the Cauchy jumping, to apply
         Gibbs within MH for the amplitude.
+        Note: we don't use this, this was an attempt to abstractify Gibbs.
         """
-        pass
+        # fixme
+        mu = 0.0
+        sigma = 1.0
+        # new_parameters[0] = rtnorm(0, Infinity, mu=mu, sigma=sigma)[0]
 
     def modelize(self, runner, x, parameters):
         """

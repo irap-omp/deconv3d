@@ -27,8 +27,8 @@ def rtnorm(a, b, mu=0., sigma=1., size=1, probabilities=False):
     distribution) truncated to the interval [a,b].
  
     X = rtnorm(a,b,mu,sigma) returns a np.ndarray of pseudorandom variables
-    generated from a normal distribution with mean `mu` and variance `sigma`,
-    truncated to the interval [a, b].
+    generated from a normal distribution with mean `mu` and standard deviation
+    `sigma`, truncated to the interval [a, b].
  
     The parameter size allows to specify a vector length and if probabilities
     is set to True, the function also returns the vector of probabilities of X.

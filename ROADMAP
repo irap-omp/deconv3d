@@ -1,0 +1,7 @@
+1.0.0
+-----
+
+- Add `setup.py`.
+- Submit `deconv3d` to PyPi.
+- Implement `doit` tasks.
+- Repair broken flexibility for Gibbs within MH.
