@@ -23,6 +23,13 @@ class LineModel:
         """
         raise NotImplementedError()
 
+    def gibbs_parameter_index(self):
+        """
+        Returns the index (an integer) of the parameter that is subject to Gibbs
+        within MH. If None is returned, the Gibbs logic is skipped entirely.
+        """
+        return None
+
     def min_boundaries(self, runner):
         """
         Returns a list of the (default) minimum boundaries of the parameters of
@@ -40,9 +47,8 @@ class LineModel:
     def post_jump(self, runner, old_parameters, new_parameters):
         """
         The model may want to mutate the `new_parameters` right after the Cauchy
-        jumping, for example to apply Gibbs within MH.
-        The `old_parameters` are provided for convenience, you should not mutate
-        them.
+        jumping. The `old_parameters` are provided for convenience, you should
+        not mutate them.
         """
         pass
 
@@ -63,6 +69,9 @@ class SingleGaussianLineModel(LineModel):
     def parameters(self):
         return ['a', 'c', 'w']
 
+    def gibbs_parameter_index(self):
+        return 0
+
     def min_boundaries(self, runner):
         return [0, 0, 0]
 
@@ -78,17 +87,6 @@ class SingleGaussianLineModel(LineModel):
         if fsf_max > 0:
             a_max = a_max / fsf_max
         return [a_max, cube.data.shape[0]-1, cube.data.shape[0]]
-
-    def post_jump(self, runner, old_parameters, new_parameters):
-        """
-        Mutates the `new_parameters` right after the Cauchy jumping, to apply
-        Gibbs within MH for the amplitude.
-        Note: we don't use this, this was an attempt to abstractify Gibbs.
-        """
-        # fixme
-        mu = 0.0
-        sigma = 1.0
-        # new_parameters[0] = rtnorm(0, Infinity, mu=mu, sigma=sigma)[0]
 
     def modelize(self, runner, x, parameters):
         """

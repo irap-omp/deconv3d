@@ -180,7 +180,7 @@ class Run:
         if self.fsf.shape[0] % 2 == 0 or self.fsf.shape[1] % 2 == 0:
             raise ValueError("FSF *must* be of odd dimensions")
 
-        # Assert that spread functions are normalized (we can remove this)
+        # Assert that the spread functions are normalized (we can remove this)
         assert np.nansum(self.fsf) == 1.
         assert np.nansum(self.lsf) == 1.
 
@@ -188,8 +188,8 @@ class Run:
         fh = self.fsf.shape[0]
         fw = self.fsf.shape[1]
         # The FSF *must* be odd-shaped, so these are integers
-        fhh = (fh-1)/2  # FSF half height
-        fhw = (fw-1)/2  # FSF half width
+        fhh = (fh - 1) / 2  # FSF half height
+        fhw = (fw - 1) / 2  # FSF half width
 
         # Set up the model to match against, from a class name or an instance
         if isinstance(model, LineModel):
@@ -213,9 +213,14 @@ class Run:
             (max_boundaries - min_boundaries) ** 2 / 12.
         ) * len(self.model.parameters()) / np.size(cube.data))
 
-        # fixme
-        # Make sure that the Gibbs'ed parameters have a jumping amplitude of 0
-        jumping_amplitude[0] = 0
+        # Do we even need to do Gibbs within MH ?
+        gpi = self.model.gibbs_parameter_index()
+        do_gibbs = False if gpi is None else True
+
+        if do_gibbs:
+            self.logger.info("Gibbs within MH enabled for parameter %d." % gpi)
+            # Make sure the Gibbs'd parameter has a jumping amplitude of 0
+            jumping_amplitude[gpi] = 0
 
         # Prepare the chain of parameters
         # One set of parameters per iteration, per spaxel
@@ -251,9 +256,6 @@ class Run:
                 p_new = \
                     min_boundaries + (max_boundaries - min_boundaries) * \
                     np.random.rand(len(self.model.parameters()))
-
-                # fixme: But amplitude should start at zero (test)
-                #p_new[0] = 0.0
 
                 parameters[0][y][x] = p_new
 
@@ -310,10 +312,8 @@ class Run:
 
                 # print p_new
 
-                # Now, post-process the parameters, for example to apply Gibbs
-                # within Metropolis Hastings for the amplitude
-                # fixme: nope
-                #self.model.post_jump(self, p_old, p_new)
+                # Now, post-process the parameters, if the model requires it to
+                self.model.post_jump(self, p_old, p_new)
 
                 # Check if new parameters are within the boundaries
                 # It happens quite often that parameters are out of boundaries,
@@ -352,11 +352,6 @@ class Run:
                 err_new_part = err_new[:, y_min:y_max, x_min:x_max]
                 err_old_part = err_old[:, y_min:y_max, x_min:x_max]
 
-                # fixme
-                ul_part = ul[:, y_min:y_max, x_min:x_max]
-                contribution_part = contribution[:, y_min:y_max, x_min:x_max]
-                ####
-
                 # Variance may be a scalar, an image or a plain cube
                 # Maybe we'll force variance to be a cube at init so that we may
                 # remove this. Not sure which is faster.
@@ -388,24 +383,32 @@ class Run:
 
                 parameters[current_iteration][y][x] = p_end
 
-                # fixme
-                # GIBBS
-                ra = max_boundaries[0] ** 2  # apriori variance of amplitude
-                ro = ra / (1 + ra * np.sum(contribution_part ** 2 / var_part))
-                mu = ro * np.sum(contribution_part * ul_part / var_part)
-                a = rtnorm(min_boundaries[0], max_boundaries[0], mu=mu, sigma=np.sqrt(ro))[0]
-                # and now we re-compute everything
-                p_end[0] = a
-                contribution, lsf_fft = self.contribution_of_spaxel(
-                    x, y, p_end,
-                    cube_width, cube_height, cube_depth,
-                    self.fsf, self.lsf, lsf_fft=lsf_fft
-                )
-                err_new = ul - contribution
-                # and we write it
-                contributions[y, x] = contribution
-                err_old = err_new
-                parameters[current_iteration][y][x] = p_end
+                if do_gibbs:
+                    # GIBBS
+                    # fixme: make sure this works ?
+
+                    # Compute some subcubes we'll need
+                    ul_part = ul[:, y_min:y_max, x_min:x_max]
+                    contrib_part = contribution[:, y_min:y_max, x_min:x_max]
+
+                    ra = max_boundaries[gpi] ** 2  # apriori variance
+                    ro = ra / (1 + ra * np.sum(contrib_part ** 2 / var_part))
+                    mu = ro * np.sum(contrib_part * ul_part / var_part)
+                    # Pick from a random truncated normal distribution
+                    r = rtnorm(min_boundaries[gpi], max_boundaries[gpi],
+                               mu=mu, sigma=np.sqrt(ro))[0]
+                    # And now re-compute everything
+                    p_end[gpi] = r
+                    contribution, lsf_fft = self.contribution_of_spaxel(
+                        x, y, p_end,
+                        cube_width, cube_height, cube_depth,
+                        self.fsf, self.lsf, lsf_fft=lsf_fft
+                    )
+                    err_new = ul - contribution
+                    # And, finally, write it
+                    contributions[y, x] = contribution
+                    err_old = err_new
+                    parameters[current_iteration][y][x] = p_end
 
             current_iteration += 1
 
@@ -413,7 +416,7 @@ class Run:
         self.parameters_chain = parameters
         self.likelihoods = likelihoods
         self.parameters = self.extract_parameters()
-        print "Extracted Parameters : %s" % str(self.parameters)
+        #print "Extracted Parameters : %s" % str(self.parameters)
         self.convolved_cube = Cube(
             data=self.simulate_convolved(cube_shape, self.parameters),
             meta=self.cube.meta
