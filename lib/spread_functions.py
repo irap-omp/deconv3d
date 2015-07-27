@@ -1,5 +1,6 @@
 # coding=utf-8
 
+import math
 import numpy as np
 from astropy import units as u
 
@@ -86,19 +87,18 @@ class GaussianFieldSpreadFunction(FieldSpreadFunction):
 
     def __str__(self):
         return """Gaussian PSF :
-  fwhm         = {i.fwhm} "
-  pa           = {i.pa} °
-  ba           = {i.ba}""".format(i=self)
+    fwhm = {i.fwhm} "
+    pa   = {i.pa} °
+    ba   = {i.ba}""".format(i=self)
 
     def as_image(self, for_cube, xo=None, yo=None):
-        # FWHM in pixels (we assume the pixels are squares!)
+        # Get the FWHM in pixels (we assume the pixels are squares!)
         fwhm = self.fwhm / for_cube.get_step(1).to('arcsec').value
-        deviation = fwhm / 2.35482
+        stddev = fwhm / (2 * math.sqrt(2 * math.log(2)))
 
         # Guess the shape of the FSF so that we hold the data within three
         # standard deviations (i think, this has to be confimed)
-        from math import ceil
-        size = ceil(6.*deviation)
+        size = math.ceil(6.*stddev)
         if size % 2 == 0:
             size += 1
         shape = (size, size)
@@ -111,9 +111,9 @@ class GaussianFieldSpreadFunction(FieldSpreadFunction):
         y, x = np.indices(shape)
         r = self._radius(xo, yo, x, y)
 
-        psf = np.exp(-0.5 * (r / deviation) ** 2)
+        fsf = np.exp(-0.5 * (r / stddev) ** 2)
 
-        return psf / psf.sum()
+        return fsf / fsf.sum()
 
     def _radius(self, xo, yo, x, y):
         """

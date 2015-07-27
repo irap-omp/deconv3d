@@ -152,7 +152,7 @@ class Run:
                 variance_cube = variance.data
                 self.logger.info("Replacing zeros in the variance cube by 1e12")
                 variance_cube = np.where(variance_cube == 0.0, 1e12, variance_cube)
-            if isinstance(variance, np.ndarray):
+            elif isinstance(variance, np.ndarray):
                 variance_cube = variance
             else:
                 raise TypeError("Provided variance is not a Cube")
@@ -166,7 +166,7 @@ class Run:
             variance_cube = np.array(clip_sigma ** 2)
 
         # Save the variance cube and the standard deviation cube (error cube)
-        self.variance_cube = variance_cube             # cube of sigma^2
+        self.variance_cube = variance_cube             # cube of sigmas²
         self.error_cube = np.sqrt(self.variance_cube)  # cube of sigmas
 
         # Set up the instrument
@@ -181,8 +181,8 @@ class Run:
             raise ValueError("FSF *must* be of odd dimensions")
 
         # Assert that the spread functions are normalized (we can remove this)
-        assert np.nansum(self.fsf) == 1.
-        assert np.nansum(self.lsf) == 1.
+        #assert np.nansum(self.fsf) == 1.0
+        #assert np.nansum(self.lsf) == 1.0
 
         # Collect the shape of the FSF
         fh = self.fsf.shape[0]
@@ -208,24 +208,23 @@ class Run:
         self.logger.info("Max boundaries : %s" %
                          dict(zip(self.model.parameters(), max_boundaries)))
 
-        # Parameter jumping amplitude
-        # fixme: maybe recalibrate that? Ask Herve !
-        jumping_amplitude = jump_amplitude * np.array(np.sqrt(
-            (max_boundaries - min_boundaries) ** 2 / 12.
-        ) * len(self.model.parameters()) / np.size(cube.data))
+        # Collect information about the model
+        parameters_count = len(self.model.parameters())
 
-        # Do we even need to do Gibbs within MH ?
+        # Parameter jumping amplitude
+        jumping_amplitude = np.ones(parameters_count) * (0.5 * jump_amplitude)
+
+        # Do we even need to do MH within Gibbs ?
         gpi = self.model.gibbs_parameter_index()
         do_gibbs = False if gpi is None else True
 
         if do_gibbs:
-            self.logger.info("Gibbs within MH enabled for parameter %d." % gpi)
+            self.logger.info("MH within Gibbs enabled for parameter %d." % gpi)
             # Make sure the Gibbs'd parameter has a jumping amplitude of 0
             jumping_amplitude[gpi] = 0
 
         # Prepare the chain of parameters
         # One set of parameters per iteration, per spaxel
-        parameters_count = len(self.model.parameters())
         parameters = np.ndarray(
             (max_iterations, cube_height, cube_width, parameters_count)
         )
@@ -257,7 +256,7 @@ class Run:
                 p_new = \
                     min_boundaries + (max_boundaries - min_boundaries) * \
                     np.random.rand(len(self.model.parameters()))
-
+                p_new[0] = 0.  # fixme: set amplitude to start at 0
                 parameters[0][y][x] = p_new
 
         # Initial simulation
@@ -300,8 +299,8 @@ class Run:
                     float(accepted_count) / float(max_accepted_count)
 
             self.logger.info(
-                "Iteration #%d, %2.0f%%" %
-                (current_iteration+1, 100 * current_acceptance_rate)
+                "Iteration #%d / %d, %2.0f%%" %
+                (current_iteration+1, max_iterations, 100 * current_acceptance_rate)
             )
 
             # Loop through all spaxels
@@ -317,12 +316,15 @@ class Run:
                 # Check if new parameters are within the boundaries
                 # It happens quite often that parameters are out of boundaries,
                 # so we do not log anything because it slows the script a lot.
+                out_of_bounds = False
                 too_low = np.array(p_new < min_boundaries)
                 too_high = np.array(p_new > max_boundaries)
                 if too_low.any() or too_high.any():
                     #print "New proposed parameters are out of boundaries."
-                    parameters[current_iteration][y][x] = p_old
-                    continue
+                    out_of_bounds = True
+                    if not do_gibbs:
+                        parameters[current_iteration][y][x] = p_old
+                        continue
 
                 # Compute the contribution of the new parameters
                 contribution, lsf_fft = self.contribution_of_spaxel(
@@ -335,9 +337,6 @@ class Run:
                 ul = err_old + contributions[y, x]
                 # Add contribution of new parameters
                 err_new = ul - contribution
-
-                # Minimum acceptance ratio, picked randomly between -∞ and 0
-                min_acceptance_ratio = log(np.random.rand())
 
                 # Compute the limits of the affected section
                 y_min = max(y-fhh, 0)
@@ -365,13 +364,16 @@ class Run:
                 ar_part_old = 0.5 * bn.nansum(err_old_part ** 2 / var_part)
                 ar_part_new = 0.5 * bn.nansum(err_new_part ** 2 / var_part)
 
-                acceptance_ratio = ar_part_old - ar_part_new
+                cur_acceptance = ar_part_old - ar_part_new
 
                 # I don't know what I'm doing
-                likelihoods[current_iteration][y][x] = acceptance_ratio
+                likelihoods[current_iteration][y][x] = cur_acceptance
+
+                # Minimum acceptance ratio, picked randomly between -∞ and 0
+                min_acceptance = log(np.random.rand())
 
                 # Save new parameters only if acceptance ratio is acceptable
-                if min_acceptance_ratio < acceptance_ratio:
+                if min_acceptance < cur_acceptance and not out_of_bounds:
                     contributions[y, x] = contribution
                     err_old = err_new
                     accepted_count += 1
@@ -392,35 +394,41 @@ class Run:
                     ul_part = ul[:, y_min:y_max, x_min:x_max]
                     ek_part = contributions[y, x, :, y_min:y_max, x_min:x_max]
                     if gibbsed_value != 0:
-                        ek_part /= gibbsed_value
-                    ra = max_boundaries[gpi] ** 2  # apriori variance
-                    ro = ra / (1 + ra * np.sum(ek_part ** 2 / var_part))
+                        ek_part = ek_part / gibbsed_value
+                    ra = float(max_boundaries[gpi] ** 2)  # apriori variance
+                    ro = ra / (1. + ra * np.sum(ek_part ** 2 / var_part))
                     mu = ro * np.sum(ek_part * ul_part / var_part)
                     # Pick from a random truncated normal distribution
                     r = rtnorm(min_boundaries[gpi], max_boundaries[gpi],
                                mu=mu, sigma=np.sqrt(ro))[0]
+                    #print "Amplitude sigma", np.sqrt(ro)
+                    # print "Amplitude", p_end[gpi], " -> ", r
                     # And now re-compute everything
                     p_end[gpi] = r
-                    contribution, lsf_fft = self.contribution_of_spaxel(
-                        x, y, p_end,
-                        cube_width, cube_height, cube_depth,
-                        self.fsf, self.lsf, lsf_fft=lsf_fft
-                    )
+
+                    # It's costly to recompute the contribution !
+                    # contribution, _ = self.contribution_of_spaxel(
+                    #     x, y, p_end,
+                    #     cube_width, cube_height, cube_depth,
+                    #     self.fsf, self.lsf, lsf_fft=lsf_fft
+                    # )
+                    # We can use the subcubes we already computed
+                    contribution = np.zeros(cube.shape)
+                    contribution[:, y_min:y_max, x_min:x_max] = ek_part * r
+
                     err_new = ul - contribution
                     # And, finally, write it
                     contributions[y, x] = contribution
                     err_old = err_new
                     parameters[current_iteration][y][x] = p_end
 
-            # fixme: debugging
+            # fixme: debugging -- it works as expected, the assertion passes
             # err_dbg = self._compute_error_in_one_step(
             #     self.data_cube,
             #     parameters[current_iteration, :, :],
             #     self.fsf, self.lsf
             # )
-            # print "DBG", err_dbg
-            # print "OLD", err_old
-            # assert np.allclose(err_dbg, err_old, atol=0., rtol=1e-08)
+            # assert np.allclose(err_dbg, err_old, atol=0., rtol=1e-05)
             ##################
 
             current_iteration += 1
