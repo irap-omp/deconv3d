@@ -209,6 +209,7 @@ class Run:
                          dict(zip(self.model.parameters(), max_boundaries)))
 
         # Parameter jumping amplitude
+        # fixme: maybe recalibrate that? Ask Herve !
         jumping_amplitude = jump_amplitude * np.array(np.sqrt(
             (max_boundaries - min_boundaries) ** 2 / 12.
         ) * len(self.model.parameters()) / np.size(cube.data))
@@ -361,8 +362,8 @@ class Run:
 
                 # Two sums of small arrays (shaped like the FSF) is faster than
                 # one sum of a big array (shaped like the cube).
-                ar_part_old = 0.5 * bn.nansum((err_old_part / var_part) ** 2)
-                ar_part_new = 0.5 * bn.nansum((err_new_part / var_part) ** 2)
+                ar_part_old = 0.5 * bn.nansum(err_old_part ** 2 / var_part)
+                ar_part_new = 0.5 * bn.nansum(err_new_part ** 2 / var_part)
 
                 acceptance_ratio = ar_part_old - ar_part_new
 
@@ -385,13 +386,16 @@ class Run:
                     # GIBBS
                     # fixme: make sure this works ?
 
+                    # Collect some values we'll need
+                    gibbsed_value = parameters[current_iteration - 1][y][x][gpi]
                     # Compute some subcubes we'll need
                     ul_part = ul[:, y_min:y_max, x_min:x_max]
-                    contrib_part = contribution[:, y_min:y_max, x_min:x_max]
-
+                    ek_part = contributions[y, x, :, y_min:y_max, x_min:x_max]
+                    if gibbsed_value != 0:
+                        ek_part /= gibbsed_value
                     ra = max_boundaries[gpi] ** 2  # apriori variance
-                    ro = ra / (1 + ra * np.sum(contrib_part ** 2 / var_part))
-                    mu = ro * np.sum(contrib_part * ul_part / var_part)
+                    ro = ra / (1 + ra * np.sum(ek_part ** 2 / var_part))
+                    mu = ro * np.sum(ek_part * ul_part / var_part)
                     # Pick from a random truncated normal distribution
                     r = rtnorm(min_boundaries[gpi], max_boundaries[gpi],
                                mu=mu, sigma=np.sqrt(ro))[0]
@@ -630,8 +634,9 @@ class Run:
         """
         Write some data to a file located at `filepath`.
         Will clobber an existing file. The filepath's extension should be `mat`,
-        for Matlab.
+        for Matlab©.
 
+        The `mat` file will contain :
         - parameters:
             The 3D array holding a parameters set for each spaxel.
             Shape: (cube_height, cube_width, parameters_count)
@@ -640,6 +645,11 @@ class Run:
             Shape: (max_iterations, cube_height, cube_width, parameters_count)
 
         This requires `scipy`.
+
+        filepath: string
+            Will write the Matlab© file to this file path.
+            It should end with `.mat`.
+            You can also provide a `file`-like object instead of a `string`.
         """
         try:
             from scipy.io import savemat
