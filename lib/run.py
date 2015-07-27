@@ -310,8 +310,6 @@ class Run:
                 p_old = np.array(parameters[current_iteration-1][y][x].tolist())
                 p_new = self.jump_from(p_old, jumping_amplitude)
 
-                # print p_new
-
                 # Now, post-process the parameters, if the model requires it to
                 self.model.post_jump(self, p_old, p_new)
 
@@ -409,6 +407,17 @@ class Run:
                     contributions[y, x] = contribution
                     err_old = err_new
                     parameters[current_iteration][y][x] = p_end
+
+            # fixme: debugging
+            # err_dbg = self._compute_error_in_one_step(
+            #     self.data_cube,
+            #     parameters[current_iteration, :, :],
+            #     self.fsf, self.lsf
+            # )
+            # print "DBG", err_dbg
+            # print "OLD", err_old
+            # assert np.allclose(err_dbg, err_old, atol=0., rtol=1e-08)
+            ##################
 
             current_iteration += 1
 
@@ -803,6 +812,38 @@ class Run:
                 raise ValueError("Extension '%s' is not supported, "
                                  "you may use one of %s",
                                  extension, ', '.join(supported_extensions))
+
+    def _compute_error_in_one_step(self, data, params, psf, lsf):
+        """
+        Debug method to hunt an annoying bug.
+        Convolves in one step.
+        """
+        # Initialize an empty output cube
+        shape = np.shape(data)
+        sim = np.zeros(shape)
+        z = shape[0]
+
+        lsf_fft = None
+
+        # For each spaxel, add its convolved line
+        for (y, x) in self.spaxel_iterator():
+            # Contribution of the line
+            line = self.model.modelize(self, range(0, z), params[y, x])
+            # Convolved via the LSF
+            if lsf_fft is None:
+                line_conv, lsf_fft = convolve_1d(line, lsf)
+            else:
+                line_conv, _ = convolve_1d(line, lsf_fft, compute_fourier=False)
+            # Add it to the simulation
+            sim[:, y, x] = line_conv
+
+        # Now convolve everything via the PSF
+        from scipy.signal import convolve2d
+        for _z in range(0, z):
+            sim[_z, :, :] = convolve2d(sim[_z, :, :], psf, mode='same')
+
+        return data - sim
+
 
 
 # Some test code for the profiler
