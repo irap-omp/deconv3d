@@ -131,6 +131,7 @@ HDU      | Header Data Unit
 LBYL     | Look Before You Leap
 LSF      | Line Spread Function
 MCMC     | Markov Chain Monte Carlo
+MH       | Metropolis-Hastings
 MPDAF    | MUSE Python Data Analysis Framework
 MUSE     | Multi Unit Spectroscopic Explorer
 NFM      | Narrow Field Mode
@@ -138,7 +139,5 @@ PA       | Position Angle
 PC       | ParseC
 PSF      | Point Spread Function
 SNR      | Signal to Noise Ratio
-         | The relative intensity of the signal from the noise
-         | Should be > 1, or the data is useless
 WFM      | Wide Field Mode
 WSC      | World Coordinates System
