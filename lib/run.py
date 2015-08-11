@@ -134,7 +134,7 @@ class Run:
         self.mask = mask
 
         # Flag invalid spaxels : we won't them for iteration and summation
-        # By default, we flag as invalid all spaxels that have a nan value
+        # By default, we flag as invalid all spaxels that have a NaN value
         # somewhere in the spectrum.
         self.mask[np.isnan(np.sum(self.data_cube, 0))] = 0
 
@@ -208,6 +208,10 @@ class Run:
         self.logger.info("Max boundaries : %s" %
                          dict(zip(self.model.parameters(), max_boundaries)))
 
+        # Assert that boundaries are consistent
+        if (min_boundaries > max_boundaries).any():
+            raise ValueError("Boundaries are inconsistent: min > max.")
+
         # Collect information about the model
         parameters_count = len(self.model.parameters())
 
@@ -239,7 +243,7 @@ class Run:
             cube_depth, cube_height, cube_width  # contribution data cube
         ))
 
-        current_iteration = 0
+        cur_iteration = 0  # Holder for the # of the current iteration
         current_acceptance_rate = 0.
 
         # Initial parameters
@@ -255,8 +259,8 @@ class Run:
             for (y, x) in self.spaxel_iterator():
                 p_new = \
                     min_boundaries + (max_boundaries - min_boundaries) * \
-                    np.random.rand(len(self.model.parameters()))
-                p_new[0] = 0.  # fixme: set amplitude to start at 0
+                    np.random.rand(parameters_count)
+                # p_new[0] = 0.  # fixme: set amplitude to start at 0
                 parameters[0][y][x] = p_new
 
         # Initial simulation
@@ -278,14 +282,14 @@ class Run:
 
         # Initial error/difference between simulation and data
         err_old = cube.data - sim
-        current_iteration += 1
+        cur_iteration += 1
 
         # Accepted iterations counter (we accepted the whole first iteration)
         accepted_count = spaxels_count
 
         # Loop as many times as specified, as long as the acceptance is OK
         while \
-                current_iteration < max_iterations \
+                cur_iteration < max_iterations \
                 and \
                 (
                     current_acceptance_rate > min_acceptance_rate or
@@ -293,21 +297,21 @@ class Run:
                 ):
 
             # Acceptance rate
-            max_accepted_count = spaxels_count * current_iteration
+            max_accepted_count = spaxels_count * cur_iteration
             if max_accepted_count > 0:
                 current_acceptance_rate = \
                     float(accepted_count) / float(max_accepted_count)
 
             self.logger.info(
                 "Iteration #%d / %d, %2.0f%%" %
-                (current_iteration+1, max_iterations, 100 * current_acceptance_rate)
+                (cur_iteration+1, max_iterations, 100 * current_acceptance_rate)
             )
 
             # Loop through all spaxels
             for (y, x) in self.spaxel_iterator():
 
                 # Compute a new set of parameters for this spaxel
-                p_old = np.array(parameters[current_iteration-1][y][x].tolist())
+                p_old = np.array(parameters[cur_iteration-1][y][x].tolist())
                 p_new = self.jump_from(p_old, jumping_amplitude)
 
                 # Now, post-process the parameters, if the model requires it to
@@ -323,7 +327,7 @@ class Run:
                     #print "New proposed parameters are out of boundaries."
                     out_of_bounds = True
                     if not do_gibbs:
-                        parameters[current_iteration][y][x] = p_old
+                        parameters[cur_iteration][y][x] = p_old
                         continue
 
                 # Compute the contribution of the new parameters
@@ -346,7 +350,7 @@ class Run:
 
                 # Actual acceptance ratio
                 # We optimize by computing only around the spatial area that was
-                # modified, aka the area of the FSF around our current spaxel.
+                # modified, aka. the area of the FSF around our current spaxel.
                 err_new_part = err_new[:, y_min:y_max, x_min:x_max]
                 err_old_part = err_old[:, y_min:y_max, x_min:x_max]
 
@@ -359,22 +363,22 @@ class Run:
                 elif len(variance_cube.shape) == 3:
                     var_part = variance_cube[:, y_min:y_max, x_min:x_max]
 
-                # Two sums of small arrays (shaped like the FSF) is faster than
-                # one sum of a big array (shaped like the cube).
+                # Two sums of small arrays (shaped at most like the FSF) is
+                # faster than one sum of a big array (shaped like the cube).
                 ar_part_old = 0.5 * bn.nansum(err_old_part ** 2 / var_part)
                 ar_part_new = 0.5 * bn.nansum(err_new_part ** 2 / var_part)
 
                 cur_acceptance = ar_part_old - ar_part_new
 
                 # I don't know what I'm doing
-                likelihoods[current_iteration][y][x] = cur_acceptance
+                likelihoods[cur_iteration][y][x] = cur_acceptance
 
                 # Minimum acceptance ratio, picked randomly between -∞ and 0
                 min_acceptance = log(np.random.rand())
 
                 # Save new parameters only if acceptance ratio is acceptable
                 if min_acceptance < cur_acceptance and not out_of_bounds:
-                    contributions[y, x] = contribution
+                    contributions[y, x, :, :, :] = contribution
                     err_old = err_new
                     accepted_count += 1
                     p_end = p_new.copy()
@@ -382,56 +386,81 @@ class Run:
                     # Otherwise the new parameters are the same as the old ones
                     p_end = p_old.copy()
 
-                parameters[current_iteration][y][x] = p_end
+                # Save the parameters
+                parameters[cur_iteration][y][x] = p_end
 
                 if do_gibbs:
                     # GIBBS
                     # fixme: make sure this works ?
+                    # fixme: some of these maths are tied to the fact that the
+                    # gibbsed value is the amplitude ; fix it.
 
                     # Collect some values we'll need
-                    gibbsed_value = parameters[current_iteration - 1][y][x][gpi]
+                    gibbsed_value = parameters[cur_iteration][y][x][gpi]
                     # Compute some subcubes we'll need
                     ul_part = ul[:, y_min:y_max, x_min:x_max]
                     ek_part = contributions[y, x, :, y_min:y_max, x_min:x_max]
                     if gibbsed_value != 0:
                         ek_part = ek_part / gibbsed_value
+                    else:
+                        # The contribution of the previous iteration is empty,
+                        # as the amplitude is zero.
+                        # In order to make the following math work, we need
+                        # to have a non-null contribution, with amplitude 1.
+                        p_one = parameters[cur_iteration][y][x].copy()
+                        p_one[gpi] = 1.
+                        # print "Params One", p_one
+                        contribution_one, _ = self.contribution_of_spaxel(
+                            x, y, p_one,
+                            cube_width, cube_height, cube_depth,
+                            self.fsf, self.lsf, lsf_fft=None
+                        )
+                        ek_part = contribution_one[:, y_min:y_max, x_min:x_max]
                     ra = float(max_boundaries[gpi] ** 2)  # apriori variance
                     ro = ra / (1. + ra * np.sum(ek_part ** 2 / var_part))
                     mu = ro * np.sum(ek_part * ul_part / var_part)
                     # Pick from a random truncated normal distribution
                     r = rtnorm(min_boundaries[gpi], max_boundaries[gpi],
                                mu=mu, sigma=np.sqrt(ro))[0]
-                    #print "Amplitude sigma", np.sqrt(ro)
+                    # print "Amplitude sigma", np.sqrt(ro)
                     # print "Amplitude", p_end[gpi], " -> ", r
                     # And now re-compute everything
                     p_end[gpi] = r
 
-                    # It's costly to recompute the contribution !
-                    # contribution, _ = self.contribution_of_spaxel(
-                    #     x, y, p_end,
-                    #     cube_width, cube_height, cube_depth,
-                    #     self.fsf, self.lsf, lsf_fft=lsf_fft
-                    # )
+                    # It's costly to recompute the contribution ! fixme
+                    #contribution_test, _ = self.contribution_of_spaxel(
+                    #    x, y, p_end,
+                    #    cube_width, cube_height, cube_depth,
+                    #    self.fsf, self.lsf, lsf_fft=None
+                    #)
                     # We can use the subcubes we already computed
                     contribution = np.zeros(cube.shape)
                     contribution[:, y_min:y_max, x_min:x_max] = ek_part * r
 
-                    err_new = ul - contribution
+                    err_new = ul - contribution  # fixme: optimize
                     # And, finally, write it
-                    contributions[y, x] = contribution
+                    contributions[y, x, :, :, :] = contribution
                     err_old = err_new
-                    parameters[current_iteration][y][x] = p_end
+                    parameters[cur_iteration][y][x] = p_end
 
-            # fixme: debugging -- it works as expected, the assertion passes
-            # err_dbg = self._compute_error_in_one_step(
-            #     self.data_cube,
-            #     parameters[current_iteration, :, :],
-            #     self.fsf, self.lsf
-            # )
-            # assert np.allclose(err_dbg, err_old, atol=0., rtol=1e-05)
+            # We compute the error based on the error of the previous iteration
+            # and therefore, due to numerical instability, small errors slowly
+            # creep in. To squash them, we sometimes recompute a "fresh" error.
+            # The error creep is usually in the 1e-14 order.
+            if cur_iteration % 1000 == 0:
+                err_dbg = self._compute_error_in_one_step(
+                    self.data_cube,
+                    parameters[cur_iteration, :, :],
+                    self.fsf, self.lsf
+                )
+                # diff = np.abs(err_dbg - err_old)
+                # dbg_error_creep.append(np.amax(diff))
+                # print "Corrected error creep of ", np.amax(diff)
+                err_old = err_dbg
+                # assert np.allclose(err_dbg, err_old, atol=0., rtol=1e-06)
             ##################
 
-            current_iteration += 1
+            cur_iteration += 1
 
         # Output
         self.parameters_chain = parameters
@@ -453,7 +482,7 @@ class Run:
         """
         Creates a generator that will yield all (y, x) doublets, for iteration.
         This generator iterates over the spaxel indices column by column,
-        skipping spaxels flagged as invalid.
+        skipping spaxels not present in the mask.
 
         Override this to implement your own iteration logic.
         """
@@ -559,6 +588,9 @@ class Run:
         Returns a cube of shape (cube_width, cube_height, cube_depth), mostly
         empty (zeros), and with the spatially spread contribution of the line
         located at spaxel (x, y).
+
+        parameters:
+            A single set of parameters for the model.
         """
 
         # Initialize output cube
@@ -581,6 +613,7 @@ class Run:
         fhw = (fw-1)/2  # FSF half width
 
         # Create the contribution cube, through spatial convolution
+        # This odd syntax simply extrudes the FSF with the line
         local_contrib = fsf * line_conv[:, np.newaxis][:, np.newaxis]
 
         # Copy the contribution into a cube sized like the input cube
