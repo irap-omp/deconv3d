@@ -47,7 +47,7 @@ class Instrument:
             The 3D Point Spread Function and its Fast Fourier Transform are
             memoized for optimization, so if you change the instrument's
             parameters after a first run, the PSF will not reflect your changes.
-            Delete ``psf`` and ``psf_fft`` to clear the memory.
+            Delete ``psf`` and ``psf_fft`` to clear the cache.
 
         cube: HyperspectralCube
         """
@@ -119,6 +119,9 @@ class MUSE(Instrument):
         Instrument.__init__(self, lsf=lsf, fsf=fsf)
 
     def build_cube(self, data):
+        """
+        Hack to include FITS metadata to Cubes lacking it (boooooo).
+        """
 
         meta = {
             'CDELT1': 5.5555555555555e-05,
@@ -141,8 +144,8 @@ class MUSE(Instrument):
         z = Axis('z', meta['CRVAL3'], meta['CDELT3'], Unit(meta['CUNIT3']))
 
         from astropy.io import fits
-        header = fits.Header()
+        hdr = fits.Header()
         for name in meta:
-            header[name] = meta[name]
+            hdr[name] = meta[name]
 
-        return HyperspectralCube(data=data, meta={'fits': header}, x=x, y=y, z=z)
+        return HyperspectralCube(data=data, meta={'fits': hdr}, x=x, y=y, z=z)

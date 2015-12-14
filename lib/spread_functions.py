@@ -232,10 +232,15 @@ class GaussianLineSpreadFunction(LineSpreadFunction):
         # Resulting vector length is the spectral depth of the cube
         depth = for_cube.shape[0]
         # Assymmetric range around 0
-        zo = (depth - 1) / 2 - (depth % 2 - 1)
-        z_range = np.arange(depth) - zo
+        z_center_index = (depth - 1) / 2 - (depth % 2 - 1)
+        z_range = np.arange(depth) - z_center_index
         # Compute gaussian (we assume peak is at 0, ie. µ=0)
-        lsf_1d = self.gaussian(z_range, 0, sigma)
+        if sigma == 0:
+            lsf_1d = np.zeros(depth)
+            lsf_1d[z_center_index] = 1.
+        else:
+            # fixme µ is 0, check if that's is a problem
+            lsf_1d = self.gaussian(z_range, 0, sigma)
         # Normalize and serve
         return lsf_1d / lsf_1d.sum()
 

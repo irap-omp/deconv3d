@@ -1,6 +1,4 @@
-from numpy.core.numeric import Infinity
 import numpy as np
-from rtnorm import rtnorm
 
 
 class LineModel:
@@ -63,7 +61,7 @@ class LineModel:
 class SingleGaussianLineModel(LineModel):
     """
     A single gaussian curve, defined by its three usual parameters.
-    This is the default line model that deconv3d uses.
+    This is the default line model that `deconv3d` uses.
     """
 
     def parameters(self):
@@ -77,8 +75,8 @@ class SingleGaussianLineModel(LineModel):
 
     def max_boundaries(self, runner):
         """
-        The FSF is normalized, so we need to adjust the maximum of our amplitude
-        accordingly.
+        The FSF is normalized, so we need to adjust the maximum of our
+        amplitude accordingly.
         """
         cube = runner.cube
         fsf = runner.fsf
@@ -103,6 +101,6 @@ class SingleGaussianLineModel(LineModel):
         c: Center
         w: Standard deviation, aka. RMS Width
 
-        If `x` is an `ndarray`, the return value will be an `ndarray` too.
+        If `x` is a `ndarray`, the return value will be a `ndarray` too.
         """
         return a * np.exp(-1. * (x - c) ** 2 / (2. * w ** 2))

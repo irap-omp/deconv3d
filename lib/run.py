@@ -10,7 +10,6 @@ from os.path import splitext
 from math import log
 from hyperspectral import HyperspectralCube as Cube
 from matplotlib import pyplot as plot
-from lib.rtnorm import rtnorm
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('deconv3d')
@@ -20,6 +19,7 @@ from instruments import Instrument
 from convolution import convolve_1d
 from math_utils import median_clip
 from line_models import LineModel, SingleGaussianLineModel
+from rtnorm import rtnorm
 
 ## OPTIONAL PACKAGES ###########################################################
 try:
@@ -78,9 +78,20 @@ class Run:
         You can tweak the Cauchy jump using this coefficient.
         You can provide a ndarray of the dimensions of the parameters of your
         line model, to customize the jump amplitude of each parameter.
+        The unit is pixels, and the default is 0.1.
+        We don't use this parameter for the gibbsed parameters.
         The default value of this is 1, which means no tweaking.
     max_iterations: int
         The number of iterations after which the chain will end.
+    keep_one_in: int
+        Will only write in the chain one parameter set every `keep_one_in`th
+        iterations. This is a way to save space in the resulting chain.
+        The default value is 1, which will save *all* iterations.
+        Provide a higher value if you have RAM or DISK space issues.
+    write_every: int
+        Will write the chain to disk every `write_every` iterations, which
+        allows you to inspect the chain while the runner is running, and
+        also ensures we don't blow the RAM.
     """
     #@profile
     def __init__(
@@ -91,10 +102,17 @@ class Run:
         variance=None,
         model=SingleGaussianLineModel,
         initial_parameters=None,
-        jump_amplitude=1.0,
-        max_iterations=10000,
+        jump_amplitude=0.1,
+        max_iterations=100000,
+        keep_one_in=1,
+        write_every=10000,
         min_acceptance_rate=0.01
     ):
+
+        # Assert the sanity of provided parameters
+        assert keep_one_in > 0, "keep_one_in= MUST be a positive integer"
+        assert write_every > 0, "write_every= MUST be a positive integer"
+        assert max_iterations > 0, "max_iterations= MUST be a positive integer"
 
         # Assign the logger to a property for convenience
         self.logger = logger
@@ -126,20 +144,24 @@ class Run:
         cube_height = cube_shape[1]
         cube_depth = cube_shape[0]
 
-        # Mask
+        # Spatial mask, so we don't iterate over all spaxels.
+        # 1: valid, 0: invalid. By default, all spaxels are valid.
         if mask is None:
             mask = np.ones((cube_height, cube_width))
         if isinstance(mask, basestring):
             mask = getdata(mask)
         self.mask = mask
 
-        # Flag invalid spaxels : we won't them for iteration and summation
+        # Flag invalid spaxels : we won't use them for iteration and summatio.
         # By default, we flag as invalid all spaxels that have a NaN value
         # somewhere in the spectrum.
         self.mask[np.isnan(np.sum(self.data_cube, 0))] = 0
 
         # Count the number of spaxels we're going to parse
         spaxels_count = np.sum(self.mask)
+
+        # Count the number of iterations we're actually going to save
+        cnt_iterations = math.ceil(max_iterations / float(keep_one_in))
 
         # Set up the variance
         if variance is not None:
@@ -166,8 +188,8 @@ class Run:
             variance_cube = np.array(clip_sigma ** 2)
 
         # Save the variance cube and the standard deviation cube (error cube)
-        self.variance_cube = variance_cube             # cube of sigmas²
-        self.error_cube = np.sqrt(self.variance_cube)  # cube of sigmas
+        self.variance_cube = np.reshape(variance_cube, cube_shape)  # sigmas²
+        self.error_cube = np.sqrt(self.variance_cube)               # sigmas
 
         # Set up the instrument
         if not isinstance(instrument, Instrument):
@@ -175,14 +197,17 @@ class Run:
         self.instrument = instrument
 
         # Set up the spread functions from the instrument
-        self.lsf = self.instrument.lsf.as_vector(self.cube)
+        # self.lsf = self.instrument.lsf.as_vector(self.cube)  # fixme
+        self.lsf = None
         self.fsf = self.instrument.fsf.as_image(self.cube)
         if self.fsf.shape[0] % 2 == 0 or self.fsf.shape[1] % 2 == 0:
             raise ValueError("FSF *must* be of odd dimensions")
 
-        # Assert that the spread functions are normalized (we can remove this)
-        #assert np.nansum(self.fsf) == 1.0
-        #assert np.nansum(self.lsf) == 1.0
+        # Assert that the spread functions are normalized
+        # fsfsum = np.nansum(self.fsf)
+        # lsfsum = np.nansum(self.lsf)
+        # assert fsfsum == 1.0, "FSF MUST be normalized, got %f." % fsfsum
+        # assert lsfsum == 1.0, "LSF MUST be normalized, got %f." % lsfsum
 
         # Collect the shape of the FSF
         fh = self.fsf.shape[0]
@@ -216,25 +241,34 @@ class Run:
         parameters_count = len(self.model.parameters())
 
         # Parameter jumping amplitude
-        jumping_amplitude = np.ones(parameters_count) * (0.5 * jump_amplitude)
+        jump_amplitude = np.array(jump_amplitude)
+        jumping_amplitude = np.ones(parameters_count) * jump_amplitude
 
         # Do we even need to do MH within Gibbs ?
         gpi = self.model.gibbs_parameter_index()
         do_gibbs = False if gpi is None else True
 
         if do_gibbs:
-            self.logger.info("MH within Gibbs enabled for parameter %d." % gpi)
+            self.logger.info("MH within Gibbs enabled for parameter `%s`." %
+                             self.model.parameters()[gpi])
             # Make sure the Gibbs'd parameter has a jumping amplitude of 0
             jumping_amplitude[gpi] = 0
 
         # Prepare the chain of parameters
-        # One set of parameters per iteration, per spaxel
-        parameters = np.ndarray(
-            (max_iterations, cube_height, cube_width, parameters_count)
-        )
+        # One set of parameters per saved iteration, per spaxel
+        try:
+            self.chain = np.ndarray(
+                (cnt_iterations, cube_height, cube_width, parameters_count)
+            )
+        except MemoryError as e:
+            self.logger.error(
+                "Not enough RAM available for that many iterations. "
+                "Use a higher value in the keep_one_in= parameter."
+            )
+            return
 
-        # Prepare the chain of "likelihoods"?
-        likelihoods = np.ndarray((max_iterations, cube_height, cube_width))
+        # Prepare the chain of likelihoods
+        likelihoods = np.ndarray((cnt_iterations, cube_height, cube_width))
 
         # Prepare the array of contributions
         # We only store "last iteration" contributions, or the RAM explodes.
@@ -244,7 +278,7 @@ class Run:
         ))
 
         cur_iteration = 0  # Holder for the # of the current iteration
-        current_acceptance_rate = 0.
+        cur_acceptance_rate = 0.
 
         # Initial parameters
         if initial_parameters is not None:
@@ -252,18 +286,24 @@ class Run:
             if isinstance(initial_parameters, basestring):
                 initial_parameters = np.load(initial_parameters)
             initial_parameters = np.array(initial_parameters)
-
-            parameters[0] = initial_parameters
+            # ... so we need a sanity check
+            ip_shape = initial_parameters.shape
+            if ip_shape[0] != cube_height or ip_shape[1] != cube_width:
+                raise ValueError(
+                    "Initial params MUST have (%d, %d) shape, got (%d, %d)."
+                    % (cube_height, cube_width, ip_shape[0], ip_shape[1])
+                )
+            # All is OK, set up the chain with the provided parameters
+            self.chain[0] = initial_parameters
         else:
             # ... picked at random between boundaries
             for (y, x) in self.spaxel_iterator():
                 p_new = \
                     min_boundaries + (max_boundaries - min_boundaries) * \
                     np.random.rand(parameters_count)
-                # p_new[0] = 0.  # fixme: set amplitude to start at 0
-                parameters[0][y][x] = p_new
+                self.chain[0][y][x] = p_new
 
-        # Initial simulation
+        # Initial simulation, zeroes everywhere
         sim = np.zeros_like(cube.data)
 
         self.logger.info("Iteration #1")
@@ -272,7 +312,7 @@ class Run:
         for (y, x) in self.spaxel_iterator():
 
             contribution, lsf_fft = self.contribution_of_spaxel(
-                x, y, parameters[0][y][x],
+                x, y, self.chain[0][y][x],
                 cube_width, cube_height, cube_depth,
                 self.fsf, self.lsf, lsf_fft=lsf_fft
             )
@@ -284,6 +324,9 @@ class Run:
         err_old = cube.data - sim
         cur_iteration += 1
 
+        # Holds the current parameters, is saved in t
+        parameters = self.chain[0].copy()
+
         # Accepted iterations counter (we accepted the whole first iteration)
         accepted_count = spaxels_count
 
@@ -292,26 +335,29 @@ class Run:
                 cur_iteration < max_iterations \
                 and \
                 (
-                    current_acceptance_rate > min_acceptance_rate or
-                    current_acceptance_rate == 0.
+                    cur_acceptance_rate > min_acceptance_rate or
+                    cur_acceptance_rate == 0.
                 ):
+
+            # Will we save that iteration in the chain ?
+            should_save_iteration = cur_iteration % keep_one_in == 0
 
             # Acceptance rate
             max_accepted_count = spaxels_count * cur_iteration
             if max_accepted_count > 0:
-                current_acceptance_rate = \
+                cur_acceptance_rate = \
                     float(accepted_count) / float(max_accepted_count)
 
             self.logger.info(
                 "Iteration #%d / %d, %2.0f%%" %
-                (cur_iteration+1, max_iterations, 100 * current_acceptance_rate)
+                (cur_iteration+1, max_iterations, 100 * cur_acceptance_rate)
             )
 
             # Loop through all spaxels
             for (y, x) in self.spaxel_iterator():
 
                 # Compute a new set of parameters for this spaxel
-                p_old = np.array(parameters[cur_iteration-1][y][x].tolist())
+                p_old = np.array(parameters[y][x].tolist())
                 p_new = self.jump_from(p_old, jumping_amplitude)
 
                 # Now, post-process the parameters, if the model requires it to
@@ -327,7 +373,7 @@ class Run:
                     #print "New proposed parameters are out of boundaries."
                     out_of_bounds = True
                     if not do_gibbs:
-                        parameters[cur_iteration][y][x] = p_old
+                        self.chain[cur_iteration][y][x] = p_old
                         continue
 
                 # Compute the contribution of the new parameters
@@ -338,30 +384,28 @@ class Run:
                 )
 
                 # Remove contribution of parameters of previous iteration
+                # This gives the residual of the contribution of the spectral
+                # lines for each spaxel, except this one.
                 ul = err_old + contributions[y, x]
                 # Add contribution of new parameters
                 err_new = ul - contribution
 
-                # Compute the limits of the affected section
+                # Compute the limits of the affected spatial section, as the
+                # contribution of one pixel is at most of the size of the FSF,
+                # and may be less if we're close to the borders.
                 y_min = max(y-fhh, 0)
                 y_max = min(y+fhh+1, cube_height)
                 x_min = max(x-fhw, 0)
                 x_max = min(x+fhw+1, cube_width)
 
                 # Actual acceptance ratio
-                # We optimize by computing only around the spatial area that was
+                # Optimized by computing only around the spatial area that was
                 # modified, aka. the area of the FSF around our current spaxel.
                 err_new_part = err_new[:, y_min:y_max, x_min:x_max]
                 err_old_part = err_old[:, y_min:y_max, x_min:x_max]
 
-                # Variance may be a scalar, an image or a plain cube
-                # Maybe we'll force variance to be a cube at init so that we may
-                # remove this. Not sure which is faster.
-                var_part = variance_cube
-                if len(variance_cube.shape) == 2:
-                    var_part = variance_cube[y_min:y_max, x_min:x_max]
-                elif len(variance_cube.shape) == 3:
-                    var_part = variance_cube[:, y_min:y_max, x_min:x_max]
+                # Extract the variance for this part of the cube
+                var_part = self.variance_cube[:, y_min:y_max, x_min:x_max]
 
                 # Two sums of small arrays (shaped at most like the FSF) is
                 # faster than one sum of a big array (shaped like the cube).
@@ -370,8 +414,11 @@ class Run:
 
                 cur_acceptance = ar_part_old - ar_part_new
 
-                # I don't know what I'm doing
-                likelihoods[cur_iteration][y][x] = cur_acceptance
+                # Store the likelihood ratio for this iteration and spaxel,
+                # which is the NLL : negged log likelihood
+                if should_save_iteration:
+                    i = cur_iteration / keep_one_in
+                    likelihoods[i][y][x] = cur_acceptance
 
                 # Minimum acceptance ratio, picked randomly between -∞ and 0
                 min_acceptance = log(np.random.rand())
@@ -379,69 +426,88 @@ class Run:
                 # Save new parameters only if acceptance ratio is acceptable
                 if min_acceptance < cur_acceptance and not out_of_bounds:
                     contributions[y, x, :, :, :] = contribution
-                    err_old = err_new
                     accepted_count += 1
+                    err_old = err_new
                     p_end = p_new.copy()
                 else:
                     # Otherwise the new parameters are the same as the old ones
                     p_end = p_old.copy()
 
                 # Save the parameters
-                parameters[cur_iteration][y][x] = p_end
+                parameters[y][x] = p_end
+                if should_save_iteration:
+                    i = cur_iteration / keep_one_in
+                    self.chain[i][y][x] = p_end
+
+                # Assert that the amplitude has not changed (it passes)
+                # assert p_end[gpi] == parameters[cur_iteration-1][y][x][gpi]
 
                 if do_gibbs:
                     # GIBBS
-                    # fixme: make sure this works ?
                     # fixme: some of these maths are tied to the fact that the
                     # gibbsed value is the amplitude ; fix it.
 
                     # Collect some values we'll need
-                    gibbsed_value = parameters[cur_iteration][y][x][gpi]
+                    gibbsed_value = parameters[y][x][gpi]
                     # Compute some subcubes we'll need
                     ul_part = ul[:, y_min:y_max, x_min:x_max]
+                    # The contribution of the spatially and spectrally
+                    # convolved line of unit flux at this spaxel.
                     ek_part = contributions[y, x, :, y_min:y_max, x_min:x_max]
+                    # fixme
+                    # Below, we assume the gibbsed value is the amplitude !
                     if gibbsed_value != 0:
+                        # This should be of unit flux, hence the normalization.
                         ek_part = ek_part / gibbsed_value
                     else:
                         # The contribution of the previous iteration is empty,
-                        # as the amplitude is zero.
+                        # as the amplitude is zero. This usually only happens
+                        # when you set the initial parameter of the amplitude
+                        # to zero.
                         # In order to make the following math work, we need
                         # to have a non-null contribution, with amplitude 1.
-                        p_one = parameters[cur_iteration][y][x].copy()
+                        # Therefore, we create a normalized contribution.
+                        p_one = parameters[y][x].copy()
                         p_one[gpi] = 1.
-                        # print "Params One", p_one
                         contribution_one, _ = self.contribution_of_spaxel(
                             x, y, p_one,
                             cube_width, cube_height, cube_depth,
                             self.fsf, self.lsf, lsf_fft=None
                         )
                         ek_part = contribution_one[:, y_min:y_max, x_min:x_max]
-                    ra = float(max_boundaries[gpi] ** 2)  # apriori variance
+
+                    # Compute the characteristics of the gaussian aposteriori
+                    # fixme: apriori variance arbitrarily set to 5
+                    # ra = float(max_boundaries[gpi] ** 2)  # apriori variance
+                    ra = 5.  # apriori variance
                     ro = ra / (1. + ra * np.sum(ek_part ** 2 / var_part))
                     mu = ro * np.sum(ek_part * ul_part / var_part)
                     # Pick from a random truncated normal distribution
                     r = rtnorm(min_boundaries[gpi], max_boundaries[gpi],
                                mu=mu, sigma=np.sqrt(ro))[0]
-                    # print "Amplitude sigma", np.sqrt(ro)
-                    # print "Amplitude", p_end[gpi], " -> ", r
+
                     # And now re-compute everything
                     p_end[gpi] = r
 
-                    # It's costly to recompute the contribution ! fixme
+                    # It's costly to recompute the contribution !
                     #contribution_test, _ = self.contribution_of_spaxel(
                     #    x, y, p_end,
                     #    cube_width, cube_height, cube_depth,
                     #    self.fsf, self.lsf, lsf_fft=None
                     #)
-                    # We can use the subcubes we already computed
+                    # We can instead use the subcubes we already computed
                     contribution = np.zeros(cube.shape)
                     contribution[:, y_min:y_max, x_min:x_max] = ek_part * r
 
-                    err_new = ul - contribution  # fixme: optimize
+                    err_new = ul - contribution
+
                     # And, finally, write it
                     contributions[y, x, :, :, :] = contribution
                     err_old = err_new
-                    parameters[cur_iteration][y][x] = p_end
+                    parameters[y][x] = p_end
+                    if should_save_iteration:
+                        i = cur_iteration / keep_one_in
+                        self.chain[i][y][x] = p_end
 
             # We compute the error based on the error of the previous iteration
             # and therefore, due to numerical instability, small errors slowly
@@ -450,23 +516,20 @@ class Run:
             if cur_iteration % 1000 == 0:
                 err_dbg = self._compute_error_in_one_step(
                     self.data_cube,
-                    parameters[cur_iteration, :, :],
+                    parameters,
                     self.fsf, self.lsf
                 )
+                # assert np.allclose(err_dbg, err_old, atol=0., rtol=1e-06)
                 # diff = np.abs(err_dbg - err_old)
-                # dbg_error_creep.append(np.amax(diff))
                 # print "Corrected error creep of ", np.amax(diff)
                 err_old = err_dbg
-                # assert np.allclose(err_dbg, err_old, atol=0., rtol=1e-06)
-            ##################
 
+            # Prepare data for the next iteration
             cur_iteration += 1
 
         # Output
-        self.parameters_chain = parameters
         self.likelihoods = likelihoods
         self.parameters = self.extract_parameters()
-        #print "Extracted Parameters : %s" % str(self.parameters)
         self.convolved_cube = Cube(
             data=self.simulate_convolved(cube_shape, self.parameters),
             meta=self.cube.meta
@@ -488,8 +551,8 @@ class Run:
         """
         h = self.cube.data.shape[1]
         w = self.cube.data.shape[2]
-        for y in range(0, h):
-            for x in range(0, w):
+        for y in range(h):
+            for x in range(w):
                 if self.mask[y, x] == 1:
                     yield (y, x)
 
@@ -497,7 +560,7 @@ class Run:
 
     def jump_from(self, parameters, amplitude):
         """
-        Draw new parameters, using a proposal density (aka jumping distribution)
+        Draw new parameters, using a proposal density (a jumping distribution)
         that is defaulted to Cauchy jumping.
 
         Override this to provide your own proposal density.
@@ -511,11 +574,12 @@ class Run:
         Extracts the mean parameters from the chain of parameters from the last
         `percentage`% parameters.
         Returns a 2D array of parameters sets. (one parameter set per spaxel)
-        Access it Y first, then X : params[Y][X].
+        Therefore, it is technically a 3D array.
+        Access it Y first, then X, then the parameter index: params[Y][X][P].
         """
 
-        s = (100. - percentage) * self.parameters_chain.shape[0] / 100.
-        parameters_burned_out = self.parameters_chain[int(s):, ...]
+        s = (100. - percentage) * self.chain.shape[0] / 100.
+        parameters_burned_out = self.chain[int(s):, ...]
 
         return np.mean(parameters_burned_out, 0)
 
@@ -599,11 +663,14 @@ class Run:
         # Raw line model
         line = self.model.modelize(self, range(0, cube_depth), parameters)
 
-        # Spectral convolution: using the Fast Fourier Transform of the LSF
-        if lsf_fft is None:
-            line_conv, lsf_fft = convolve_1d(line, lsf)
+        if lsf is None:
+            line_conv = line
         else:
-            line_conv, _ = convolve_1d(line, lsf_fft, compute_fourier=False)
+            # Spectral convolution: using the Fast Fourier Transform of the LSF
+            if lsf_fft is None:
+                line_conv, lsf_fft = convolve_1d(line, lsf)
+            else:
+                line_conv, _ = convolve_1d(line, lsf_fft, compute_fourier=False)
 
         # Collect the shape of the FSF
         fh = fsf.shape[0]
@@ -616,8 +683,8 @@ class Run:
         # This odd syntax simply extrudes the FSF with the line
         local_contrib = fsf * line_conv[:, np.newaxis][:, np.newaxis]
 
-        # Copy the contribution into a cube sized like the input cube
-        # We only copy the portions that intersect spatially
+        # Copy the contribution into a cube sized like the input cube.
+        # We only copy the portions that intersect spatially.
         sim[
             :,
             max(y-fhh, 0):min(y+fhh+1, cube_height),
@@ -641,8 +708,15 @@ class Run:
           - <name>_parameters.npy
             A 3D array, holding a parameters set for each spaxel.
             This can be used as input for `initial_parameters`.
+            Its shape is as follows :
+            (cube_height, cube_width, parameters_count).
+          - <name>_chain.npy
+            A 4D array, holding a parameters set for each spaxel,
+            for each iteration. Its shape is as follows :
+            (max_iterations, cube_height, cube_width, parameters_count).
           - <name>_images.png
             A mosaic of the relevant cubes, flattened along the spectral axis.
+          - todo: describe the other generated files.
 
         name: string
             An absolute or relative name that will be used as prefix for the
@@ -652,15 +726,28 @@ class Run:
             When set to true, will OVERWRITE existing files.
         """
         self.save_parameters_npy("%s_parameters.npy" % name)
-        self.save_matlab("%s_matlab.mat" % name)
+        self.save_chain_npy("%s_chain.npy" % name)
+        try:
+            self.save_matlab("%s_matlab.mat" % name)
+        except Exception as e:
+            print e
+
+        # Images
         self.plot_images("%s_images.png" % name)
         self.plot_chain(filepath="%s_chain.png" % name)
 
+        # FITS files
         self.convolved_cube.to_fits("%s_convolved_cube.fits" % name, clobber)
         self.clean_cube.to_fits("%s_clean_cube.fits" % name, clobber)
 
-        np.save("%s_fsf.npy" % name, self.fsf)
-        np.save("%s_lsf.npy" % name, self.lsf)
+        # Numpy data
+        np.savez(
+            "%s_result.npz" % name,
+            chain=self.chain,
+            likelihoods=self.likelihoods,
+            fsf=self.fsf,
+            lsf=self.lsf
+        )
 
     def save_parameters_npy(self, filepath):
         """
@@ -670,6 +757,19 @@ class Run:
         """
 
         np.save(filepath, self.extract_parameters())
+
+    def save_chain_npy(self, filepath):
+        """
+        Write the whole chain to a file located at `filepath`.
+        Will clobber an existing file !
+        The filepath's extension should be `npy`.
+        The saved chain is a 4D `ndarray` holding the parameters set for each
+        spaxel, for each saved iteration, and its shape is as follows :
+            (iterations, cube_height, cube_width, parameters_count)
+        where `iterations` is `floor(max_iterations / keep_one_in)`.
+        """
+
+        np.save(filepath, self.chain)
 
     def save_matlab(self, filepath):
         """
@@ -696,14 +796,14 @@ class Run:
             from scipy.io import savemat
             savemat(filepath, dict(
                 parameters=self.extract_parameters(),
-                chain=self.parameters_chain
+                chain=self.chain
             ))
         except ImportError:
             logger.error("The `scipy` package is required to save for matlab.")
 
     ## PLOTS ###################################################################
 
-    def plot_chain(self, x=None, y=None, filepath=None, bound=False):
+    def plot_chain(self, x=None, y=None, filepath=None, bound=True):
         """
         Plot the MCMC chain of the spaxel described by the indices (`x`, `y`).
         If `x` or `y` are not specified, they will default to the center of the
@@ -727,21 +827,15 @@ class Run:
         if y is None:
             y = math.floor(self.cube.shape[1] / 2.)
 
-        chain = self.parameters_chain[:, y, x, :]
-
-        # print chain
-        # [[  2.27769676e-19   1.57019398e+01   7.37263527e+00]
-        #  [  2.27769676e-19   1.57019398e+01   7.37263527e+00]]
-
+        chain = self.chain[:, y, x, :]
         chain_transposed = np.transpose(chain)
-
-        plot.clf()  # clear current figure
-
         names = self.model.parameters()
         rows = 2
         cols = len(names)
         bmin = self.model.min_boundaries(self)
         bmax = self.model.max_boundaries(self)
+
+        plot.clf()  # clear current figure
 
         # First row: the model's parameters
         for i in range(len(names)):
@@ -754,7 +848,7 @@ class Run:
         # Second row: the reduced chi
         plot.subplot2grid((rows, cols), (1, 0), colspan=cols)
         plot.plot(self.likelihoods[:, y, x])
-        plot.title('acceptance ratio', fontsize='small')
+        plot.title('likelihood', fontsize='small')
 
         if filepath is None:
             plot.show()
@@ -880,13 +974,16 @@ class Run:
         for (y, x) in self.spaxel_iterator():
             # Contribution of the line
             line = self.model.modelize(self, range(0, z), params[y, x])
-            # Convolved via the LSF
-            if lsf_fft is None:
-                line_conv, lsf_fft = convolve_1d(line, lsf)
+            if lsf is None:
+                line_conv = line
             else:
-                line_conv, _ = convolve_1d(line, lsf_fft, compute_fourier=False)
+                # Convolved via the LSF
+                if lsf_fft is None:
+                    line_conv, lsf_fft = convolve_1d(line, lsf)
+                else:
+                    line_conv, _ = convolve_1d(line, lsf_fft, compute_fourier=False)
             # Add it to the simulation
-            sim[:, y, x] = line_conv
+            sim[:, y, x] = line_conv.copy()  # fixme: testing copy
 
         # Now convolve everything via the PSF
         from scipy.signal import convolve2d

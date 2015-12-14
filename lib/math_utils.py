@@ -1,14 +1,10 @@
 import numpy as np
-import math
-
-# Mandatory TAU = 6.283185307179586...
-math.tau = 2 * math.pi
 
 
 def merge_where_nan(target, filler):
     """
-    Procedurally mutates `target` by replacing its nan values by values from
-    `filler`. This is a very simple polyfill for `numpy.copyto`. (for numpy<1.7)
+    Mutates `target` by replacing its nan values by values from `filler`.
+    This is a very simple polyfill for `numpy.copyto`. (for numpy<1.7)
     """
     try:
         np.copyto(target, filler, where=np.isnan(target))
@@ -20,8 +16,6 @@ def merge_where_nan(target, filler):
 def median_clip(data, clip_sigma=3., limit_ratio=1e-3, max_iterations=5):
     """
     Computes an iteratively sigma-clipped median on a `data` set.
-
-    /!\ It mutates the input `data`.
 
     data : ndarray
         Input data.

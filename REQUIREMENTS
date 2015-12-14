@@ -1,0 +1,8 @@
+
+# Science tools
+numpy
+astropy
+matplotlib
+
+# HDF5 datasets allow chunked I/O
+# h5py   >=2.0, <3.0
