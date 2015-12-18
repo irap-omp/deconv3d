@@ -373,7 +373,8 @@ class Run:
                     #print "New proposed parameters are out of boundaries."
                     out_of_bounds = True
                     if not do_gibbs:
-                        self.chain[cur_iteration][y][x] = p_old
+                        i = cur_iteration / keep_one_in
+                        self.chain[i][y][x] = p_old
                         continue
 
                 # Compute the contribution of the new parameters
