@@ -1,16 +1,16 @@
 
-## GENERAL PACKAGES ############################################################
+# GENERAL PACKAGES ############################################################
 from os import pardir, remove
 from os.path import abspath, dirname, join, isfile
 import numpy as np
 import unittest
 from hyperspectral import HyperspectralCube as Cube
 
-## LOCAL PACKAGES ##############################################################
+# LOCAL PACKAGES ##############################################################
 from deconv3d import Run, MUSE
 
 
-## ACTUAL TESTS ################################################################
+# ACTUAL TESTS ################################################################
 from lib.line_models import SingleGaussianLineModel
 from lib.masks import above_percentile
 
@@ -76,19 +76,19 @@ class RunTest(unittest.TestCase):
         minp = np.array(m.min_boundaries(cube))
         maxp = np.array(m.max_boundaries(cube))
 
-        ## FROM A 1D ARRAY
+        # FROM A 1D ARRAY
         p1d = minp + (maxp - minp) * np.random.rand(nump)
 
         run = Run(cube, inst, initial_parameters=p1d, max_iterations=1)
         # Note: p1d is broacasted on each spaxel in this assertion
         self.assertTrue((run.extract_parameters() == p1d).all())
 
-        ## FROM A 3D ARRAY
+        # FROM A 3D ARRAY
         p3d = np.resize(p1d, (cube.shape[1], cube.shape[0], nump))
         run = Run(cube, inst, initial_parameters=p1d, max_iterations=1)
         self.assertTrue((run.extract_parameters() == p3d).all())
 
-        ## FROM A NPY FILE
+        # FROM A NPY FILE
         np.save('test.npy', p3d)
         run = Run(cube, inst, initial_parameters='test.npy', max_iterations=1)
         self.assertTrue((run.extract_parameters() == p3d).all())
@@ -112,7 +112,13 @@ class RunTest(unittest.TestCase):
 
         run.plot_images()
 
+    # OTHER TESTS #############################################################
+
     def test_rtnorm(self):
+        """
+        Simple sanity test for the random truncated normal distribution.
+        There are more extensive tests in `test_rtnorm.py`.
+        """
         from lib.rtnorm import rtnorm
         from sys import maxint
 
@@ -132,55 +138,11 @@ class RunTest(unittest.TestCase):
         self.assertGreaterEqual(r, 0)
         self.assertLessEqual(r, maxint)
 
-    ### GARBAGE TESTS ##########################################################
-
-    def test_with_galpak1_data(self):
-        cube = Cube.from_fits(self.data_galpak1_filename)
-        inst = MUSE()
-
-        self.assertFalse(cube.is_empty())
-
-        run = Run(
-            cube, inst,
-            mask=self.mask_galpak1_filename,
-            max_iterations=42
-        )
-
-        run.save('run_004', clobber=True)
-
-    def test_with_galpak2_data(self):
-        # FIX THESE DAMN HEADERS
-        from astropy.io.fits import setval
-        setval(self.data_galpak2_filename, keyword='CDELT1', value=5.5555555555555e-05, ext=0)
-        setval(self.data_galpak2_filename, keyword='CDELT2', value=5.5555555555555e-05, ext=0)
-        setval(self.data_galpak2_filename, keyword='CRVAL1', value=1.0, ext=0)
-        setval(self.data_galpak2_filename, keyword='CRVAL2', value=1.0, ext=0)
-        setval(self.data_galpak2_filename, keyword='CRPIX1', value=1.0, ext=0)
-        setval(self.data_galpak2_filename, keyword='CRPIX2', value=1.0, ext=0)
-        setval(self.data_galpak2_filename, keyword='CUNIT1', value='deg     ', ext=0)
-        setval(self.data_galpak2_filename, keyword='CUNIT2', value='deg     ', ext=0)
-        setval(self.data_galpak2_filename, keyword='CTYPE1', value='RA---TAN', ext=0)
-        setval(self.data_galpak2_filename, keyword='CTYPE2', value='DEC--TAN', ext=0)
-        ########################
-
-        cube = Cube.from_fits(self.data_galpak2_filename)
-        inst = MUSE()
-
-        print("HEADER")
-        print(cube.meta['fits'])
-
-        self.assertFalse(cube.is_empty())
-
-        run = Run(
-            cube, inst,
-            mask=self.mask_galpak2_filename,
-            jump_amplitude=2.0,
-            max_iterations=10
-        )
-
-        run.save('run_galpak_renorm_2', clobber=True)
-
     def test_numpy_extrude(self):
+        """
+        Testing extrusion using the `numpy.newaxis` syntax.
+        This does not test deconv3d per se, but it's good to know.
+        """
         a2d = np.array([[0, 1],
                         [2, 0]])
         a1d = np.array([1, 2, 3])
@@ -194,7 +156,56 @@ class RunTest(unittest.TestCase):
              [6, 0]],
         ])
 
-        # Yep. Not trivial, but fast
+        # Not trivial, but fast
         a3d = a2d * a1d[:, np.newaxis][:, np.newaxis]
 
-        self.assertEqual(0, np.sum(a3d-b3d))
+        np.testing.assert_array_almost_equal(a3d, b3d)
+
+    # GARBAGE TESTS ###########################################################
+
+    # def test_with_galpak1_data(self):
+    #     cube = Cube.from_fits(self.data_galpak1_filename)
+    #     inst = MUSE()
+    #
+    #     self.assertFalse(cube.is_empty())
+    #
+    #     run = Run(
+    #         cube, inst,
+    #         mask=self.mask_galpak1_filename,
+    #         max_iterations=42
+    #     )
+    #
+    #     run.save('run_004', clobber=True)
+    #
+    # def test_with_galpak2_data(self):
+    #     # FIX THESE DAMN HEADERS
+    #     from astropy.io.fits import setval
+    #     setval(self.data_galpak2_filename, keyword='CDELT1', value=5.5555555555555e-05, ext=0)
+    #     setval(self.data_galpak2_filename, keyword='CDELT2', value=5.5555555555555e-05, ext=0)
+    #     setval(self.data_galpak2_filename, keyword='CRVAL1', value=1.0, ext=0)
+    #     setval(self.data_galpak2_filename, keyword='CRVAL2', value=1.0, ext=0)
+    #     setval(self.data_galpak2_filename, keyword='CRPIX1', value=1.0, ext=0)
+    #     setval(self.data_galpak2_filename, keyword='CRPIX2', value=1.0, ext=0)
+    #     setval(self.data_galpak2_filename, keyword='CUNIT1', value='deg     ', ext=0)
+    #     setval(self.data_galpak2_filename, keyword='CUNIT2', value='deg     ', ext=0)
+    #     setval(self.data_galpak2_filename, keyword='CTYPE1', value='RA---TAN', ext=0)
+    #     setval(self.data_galpak2_filename, keyword='CTYPE2', value='DEC--TAN', ext=0)
+    #     ########################
+    #
+    #     cube = Cube.from_fits(self.data_galpak2_filename)
+    #     inst = MUSE()
+    #
+    #     print("HEADER")
+    #     print(cube.meta['fits'])
+    #
+    #     self.assertFalse(cube.is_empty())
+    #
+    #     run = Run(
+    #         cube, inst,
+    #         mask=self.mask_galpak2_filename,
+    #         jump_amplitude=2.0,
+    #         max_iterations=10
+    #     )
+    #
+    #     run.save('run_galpak_renorm_2', clobber=True)
+

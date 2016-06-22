@@ -6,8 +6,8 @@
 
 samples = int(1e6)
 
-minimum = 0.
-maximum = 15.
+minimum = 1.
+maximum = 17.
 center = 7.
 stddev = 5.
 
