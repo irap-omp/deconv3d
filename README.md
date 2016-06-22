@@ -139,5 +139,5 @@ PA       | Position Angle
 PC       | ParseC
 PSF      | Point Spread Function
 SNR      | Signal to Noise Ratio
+WCS      | World Coordinates System
 WFM      | Wide Field Mode
-WSC      | World Coordinates System
