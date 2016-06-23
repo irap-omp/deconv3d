@@ -4,8 +4,8 @@ import numpy as np
 class LineModel:
     """
     Interface for the model of the spectral line.
-    Your line models should extend this class, and implement its methods.
-    Duck typing is very good, but this is cleaner, faster and more maintainable,
+    Your line models must extend this class, and implement its methods.
+    Duck typing is very good, but this is cleaner, faster and more maintainable
     as we have a lot of methods to check for. LBYL > EAFP here.
 
     See `SingleGaussianLineModel` below for an implementation example.
@@ -23,8 +23,11 @@ class LineModel:
 
     def gibbs_parameter_index(self):
         """
-        Returns the index (an integer) of the parameter that is subject to Gibbs
-        within MH. If None is returned, the Gibbs logic is skipped entirely.
+        Returns the index (an integer) of the parameter in the list defined
+        above that is subject to Gibbs within MH.
+        If None is returned, the Gibbs logic is skipped entirely.
+        WARNING : We're assuming that the Gibbsed parameter is the amplitude,
+                  for performance, in the current runner implementation.
         """
         return None
 
@@ -44,9 +47,9 @@ class LineModel:
 
     def post_jump(self, runner, old_parameters, new_parameters):
         """
-        The model may want to mutate the `new_parameters` right after the Cauchy
-        jumping. The `old_parameters` are provided for convenience, you should
-        not mutate them.
+        Your model may want to mutate the `new_parameters` right after the
+        Cauchy jumping. The `old_parameters` are provided for convenience, you
+        should not mutate them. This hook is of course very much optional.
         """
         pass
 
@@ -75,7 +78,7 @@ class SingleGaussianLineModel(LineModel):
 
     def max_boundaries(self, runner):
         """
-        The FSF is normalized, so we need to adjust the maximum of our
+        Note: The FSF is normalized, so we need to adjust the maximum of our
         amplitude accordingly.
         """
         cube = runner.cube
