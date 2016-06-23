@@ -10,4 +10,5 @@ with open(join(dirname(abspath(__file__)), 'VERSION'), 'r') as version_file:
 from lib.instruments import *
 from lib.run import *
 from lib.spread_functions import *
+from lib.line_models import *
 from lib.masks import *
