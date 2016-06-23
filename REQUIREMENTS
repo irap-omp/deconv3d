@@ -2,6 +2,7 @@
 
 # Science tools
 numpy
+scipy
 astropy
 matplotlib
 

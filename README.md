@@ -17,7 +17,9 @@ HOW TO INSTALL
 Using pip
 ---------
 
-Install `deconv3` system-wide,
+_(still not available)_
+
+Install `deconv3d` system-wide,
 
 ```
 $ sudo pip install deconv3d
@@ -37,6 +39,8 @@ your system, as `deconv3d` is referenced on the official [python package index]
 
 Manually
 --------
+
+_(still not available)_
 
 Running `python setup.py install` should do the trick.
 
@@ -93,13 +97,12 @@ Simply run `nosetests -v --nocapture --nologcapture` from project's root :
 These options are not mandatory for the tests to pass, but they are useful.
 
 If you don't have `nose`, you can either
-```
-$ apt-get install python-nose
-```
+
+    $ apt-get install python-nose
+
 or
-```
-$ pip install --user nose
-```
+
+    $ pip install --user nose
 
 
 HOW TO DOCUMENT
@@ -107,13 +110,31 @@ HOW TO DOCUMENT
 
 Install sphinx :
 
-```
-$ apt-get install python-sphinx
-```
+    $ apt-get install python-sphinx
 
 Make your changes into the `doc/source` files.
 
 Once its done, go to `doc` directory, run `make html`.
+
+
+HOW TO CONTRIBUTE
+=================
+
+Get the sources.
+
+Create a virtualenv with python 2.7 :
+
+    $ virtualenv venv2.7 -p /usr/bin/python2.7
+
+Activate that virtualenv :
+
+    $ source venv2.7/bin/activate
+
+Install dependencies :
+
+    $ pip install -r REQUIREMENTS
+
+You're ready to run the test-suite !
 
 
 ACRONYMS

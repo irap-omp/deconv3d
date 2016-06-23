@@ -1,8 +1,7 @@
 # coding=utf-8
 
-## GENERAL PACKAGES ############################################################
+# GENERAL PACKAGES ############################################################
 import sys
-from logging import Logger
 import math
 import numpy as np
 import logging
@@ -14,14 +13,14 @@ from matplotlib import pyplot as plot
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('deconv3d')
 
-## LOCAL PACKAGES ##############################################################
+# LOCAL PACKAGES ##############################################################
 from instruments import Instrument
 from convolution import convolve_1d
 from math_utils import median_clip
 from line_models import LineModel, SingleGaussianLineModel
 from rtnorm import rtnorm
 
-## OPTIONAL PACKAGES ###########################################################
+# OPTIONAL PACKAGES ###########################################################
 try:
     import bottleneck as bn
 except ImportError:
@@ -31,13 +30,13 @@ try:
 except ImportError:
     from pyfits import Header, getdata
 
-## SOME CONSTANTS ##############################################################
+# SOME CONSTANTS ##############################################################
 CIRCLE = np.pi * 2.
 CIRCLE_4TH = np.pi / 2.
 MAXIMUM = sys.maxint
 
 
-## MCMC RUNNER #################################################################
+# MCMC RUNNER #################################################################
 class Run:
     """
     This is the main runner of the deconvolution.
@@ -49,8 +48,8 @@ class Run:
     run.plot_chain()
     ```
 
-    cube: str | hyperspectral.HyperspectralCube
-        The path to a FITS file, or a `hyperspectral.HyperspectralCube` object,
+    cube: str | ndarray
+        The path to a FITS file, or a 3D `numpy.ndarray`,
         containing the source data you want to deconvolve.
     instrument: Instrument
         The instrument object to use. Use `MUSE()`, for example.
@@ -93,16 +92,17 @@ class Run:
         allows you to inspect the chain while the runner is running, and
         also ensures we don't blow the RAM.
     """
-    #@profile
+    # @profile
     def __init__(
         self,
         cube,
-        instrument,
+        instrument=None,
         mask=None,
         variance=None,
         model=SingleGaussianLineModel,
         initial_parameters=None,
         jump_amplitude=0.1,
+        gibbs_apriori_variance=None,
         max_iterations=100000,
         keep_one_in=1,
         write_every=10000,
@@ -136,7 +136,12 @@ class Run:
         if cube.is_empty():
             raise ValueError("Provided cube is empty")
         self.cube = cube
-        self.data_cube = cube.data
+
+        # Ensure numerical stability
+        signal_max = np.max(self.cube.data)
+        assert signal_max > 1e-10, \
+            "The input cube has data that is too small and will cause " \
+            "numerical instability, infinite loops, or worse : bad science."
 
         # Collect informations about the cube
         cube_shape = cube.data.shape
@@ -155,7 +160,7 @@ class Run:
         # Flag invalid spaxels : we won't use them for iteration and summatio.
         # By default, we flag as invalid all spaxels that have a NaN value
         # somewhere in the spectrum.
-        self.mask[np.isnan(np.sum(self.data_cube, 0))] = 0
+        self.mask[np.isnan(np.sum(self.cube.data, 0))] = 0
 
         # Count the number of spaxels we're going to parse
         spaxels_count = np.sum(self.mask)
@@ -185,11 +190,15 @@ class Run:
             # Adjust sigma if it is zero, as we'll divide with it later on
             if clip_sigma == 0:
                 clip_sigma = 1e-20  # arbitrarily low value
-            variance_cube = np.array(clip_sigma ** 2)
+            variance_cube = np.ones(cube_shape) * clip_sigma ** 2
 
         # Save the variance cube and the standard deviation cube (error cube)
-        self.variance_cube = np.reshape(variance_cube, cube_shape)  # sigmas²
-        self.error_cube = np.sqrt(self.variance_cube)               # sigmas
+        if variance_cube.shape != cube_shape:
+            raise ValueError("Provided variance has not the correct shape."
+                             "Expected %s, got %s"
+                             % (str(cube_shape), str(variance_cube.shape)))
+        self.variance_cube = variance_cube             # sigmas ** 2
+        self.error_cube = np.sqrt(self.variance_cube)  # sigmas
 
         # Set up the instrument
         if not isinstance(instrument, Instrument):
@@ -253,6 +262,9 @@ class Run:
                              self.model.parameters()[gpi])
             # Make sure the Gibbs'd parameter has a jumping amplitude of 0
             jumping_amplitude[gpi] = 0
+            # Compute the apriori variance if the user has not specified one
+            if gibbs_apriori_variance is None:
+                gibbs_apriori_variance = float(max_boundaries[gpi] ** 2)
 
         # Prepare the chain of parameters
         # One set of parameters per saved iteration, per spaxel
@@ -370,7 +382,7 @@ class Run:
                 too_low = np.array(p_new < min_boundaries)
                 too_high = np.array(p_new > max_boundaries)
                 if too_low.any() or too_high.any():
-                    #print "New proposed parameters are out of boundaries."
+                    # print "New proposed parameters are out of boundaries."
                     out_of_bounds = True
                     if not do_gibbs:
                         i = cur_iteration / keep_one_in
@@ -445,8 +457,8 @@ class Run:
 
                 if do_gibbs:
                     # GIBBS
-                    # fixme: some of these maths are tied to the fact that the
-                    # gibbsed value is the amplitude ; fix it.
+                    # Note: some of these maths are tied to the fact that the
+                    # gibbsed value is the amplitude.
 
                     # Collect some values we'll need
                     gibbsed_value = parameters[y][x][gpi]
@@ -478,9 +490,8 @@ class Run:
                         ek_part = contribution_one[:, y_min:y_max, x_min:x_max]
 
                     # Compute the characteristics of the gaussian aposteriori
-                    # fixme: apriori variance arbitrarily set to 5
                     # ra = float(max_boundaries[gpi] ** 2)  # apriori variance
-                    ra = 5.  # apriori variance
+                    ra = gibbs_apriori_variance  # apriori variance
                     ro = ra / (1. + ra * np.sum(ek_part ** 2 / var_part))
                     mu = ro * np.sum(ek_part * ul_part / var_part)
                     # Pick from a random truncated normal distribution
@@ -516,7 +527,7 @@ class Run:
             # The error creep is usually in the 1e-14 order.
             if cur_iteration % 1000 == 0:
                 err_dbg = self._compute_error_in_one_step(
-                    self.data_cube,
+                    self.cube.data,
                     parameters,
                     self.fsf, self.lsf
                 )
@@ -540,7 +551,7 @@ class Run:
             meta=self.cube.meta
         )
 
-    ## ITERATORS ###############################################################
+    # ITERATORS ###############################################################
 
     def spaxel_iterator(self):
         """
@@ -557,7 +568,7 @@ class Run:
                 if self.mask[y, x] == 1:
                     yield (y, x)
 
-    ## MCMC ####################################################################
+    # MCMC ####################################################################
 
     def jump_from(self, parameters, amplitude):
         """
@@ -584,7 +595,7 @@ class Run:
 
         return np.mean(parameters_burned_out, 0)
 
-    ## SIMULATOR ###############################################################
+    # SIMULATOR ###############################################################
 
     def simulate_clean(self, shape, parameters):
         """
@@ -699,7 +710,37 @@ class Run:
 
         return sim, lsf_fft
 
-    ## SAVES ###################################################################
+    # def local_contribution_of_spaxel(
+    #         self, parameters, cube_depth,
+    #         fsf, lsf, lsf_fft=None
+    # ):
+    #     """
+    #     The contribution cube of the line described by `parameters` in the
+    #     spaxel (x, y), after convolution by the `lsf` and `fsf`.
+    #
+    #     Returns a cube of shape (fsf_width, fsf_height, cube_depth).
+    #
+    #     parameters:
+    #         A single set of parameters for the model.
+    #     """
+    #
+    #     # Raw line model
+    #     line = self.model.modelize(self, range(cube_depth), parameters)
+    #
+    #     if lsf is None:
+    #         line_conv = line
+    #     else:
+    #         # Spectral convolution: using the Fast Fourier Transform of the LSF
+    #         if lsf_fft is None:
+    #             line_conv, lsf_fft = convolve_1d(line, lsf)
+    #         else:
+    #             line_conv, _ = convolve_1d(line, lsf_fft, compute_fourier=False)
+    #
+    #     # Create the contribution cube, through spatial convolution
+    #     # This odd syntax simply extrudes the FSF with the line
+    #     return fsf * line_conv[:, np.newaxis][:, np.newaxis]
+
+    # SAVES ###################################################################
 
     def save(self, name, clobber=False):
         """
@@ -802,7 +843,7 @@ class Run:
         except ImportError:
             logger.error("The `scipy` package is required to save for matlab.")
 
-    ## PLOTS ###################################################################
+    # PLOTS ###################################################################
 
     def plot_chain(self, x=None, y=None, filepath=None, bound=True):
         """
@@ -879,9 +920,9 @@ class Run:
         self._check_image_filepath(filepath)
 
         p = self.extract_parameters()
-        convolved_cube = self.simulate_convolved(self.data_cube.shape, p)
-        clean_cube = self.simulate_clean(self.data_cube.shape, p)
-        self._plot_images(self.data_cube, convolved_cube, clean_cube)
+        convolved_cube = self.simulate_convolved(self.cube.data.shape, p)
+        clean_cube = self.simulate_clean(self.cube.data.shape, p)
+        self._plot_images(self.cube.data, convolved_cube, clean_cube)
 
         if filepath is None:
             plot.show()
@@ -984,7 +1025,7 @@ class Run:
                 else:
                     line_conv, _ = convolve_1d(line, lsf_fft, compute_fourier=False)
             # Add it to the simulation
-            sim[:, y, x] = line_conv.copy()  # fixme: testing copy
+            sim[:, y, x] = line_conv
 
         # Now convolve everything via the PSF
         from scipy.signal import convolve2d
