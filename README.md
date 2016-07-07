@@ -132,7 +132,7 @@ Activate that virtualenv :
 
 Install dependencies :
 
-    $ pip install -r REQUIREMENTS
+    $ pip install -r requirements.txt
 
 You're ready to run the test-suite !
 
