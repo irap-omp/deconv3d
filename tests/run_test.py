@@ -7,12 +7,17 @@ import unittest
 from hyperspectral import HyperspectralCube as Cube
 
 # LOCAL PACKAGES ##############################################################
-from deconv3d import Run, MUSE
+
+import sys
+sys.path.append('.')
+
+from lib.run import Run
+from lib.instruments import MUSE
+from lib.line_models import SingleGaussianLineModel
+from lib.masks import above_percentile
 
 
 # ACTUAL TESTS ################################################################
-from lib.line_models import SingleGaussianLineModel
-from lib.masks import above_percentile
 
 
 class RunTest(unittest.TestCase):
@@ -43,19 +48,17 @@ class RunTest(unittest.TestCase):
         cube = Cube.from_fits(self.fits_muse_filename)
         inst = MUSE()
 
-        self.assertFalse(cube.is_empty())
+        self.assertFalse(cube.is_empty(), "Sanity check.")
 
-        run = Run(cube, inst,
-                  initial_parameters='run_001.npy',
-                  max_iterations=22222)
+        run = Run(cube, instrument=inst, max_iterations=200)
 
-        run.save('run_003', clobber=True)
+        run.save('run_test_init_with_muse_cube', clobber=True)
 
     def test_save(self):
         cube = Cube.from_fits(self.fits_muse_filename)
         inst = MUSE()
 
-        run = Run(cube, inst, max_iterations=2)
+        run = Run(cube, instrument=inst, max_iterations=2)
         run.save('test', clobber=True)
 
         self.assertTrue(isfile('test_parameters.npy'))
@@ -85,7 +88,7 @@ class RunTest(unittest.TestCase):
 
         # FROM A 3D ARRAY
         p3d = np.resize(p1d, (cube.shape[1], cube.shape[0], nump))
-        run = Run(cube, inst, initial_parameters=p1d, max_iterations=1)
+        run = Run(cube, inst, initial_parameters=p3d, max_iterations=1)
         self.assertTrue((run.extract_parameters() == p3d).all())
 
         # FROM A NPY FILE
@@ -113,30 +116,6 @@ class RunTest(unittest.TestCase):
         run.plot_images()
 
     # OTHER TESTS #############################################################
-
-    def test_rtnorm(self):
-        """
-        Simple sanity test for the random truncated normal distribution.
-        There are more extensive tests in `test_rtnorm.py`.
-        """
-        from lib.rtnorm import rtnorm
-        from sys import maxint
-
-        # Generate an array with one number
-        r = rtnorm(0, maxint)
-
-        self.assertTrue(isinstance(r, np.ndarray))
-        self.assertTrue(len(r) == 1)
-        self.assertGreaterEqual(r, 0)
-        self.assertLessEqual(r, maxint)
-
-        # Generate an array with 42 numbers
-        r = rtnorm(0, maxint, size=42)
-
-        self.assertTrue(isinstance(r, np.ndarray))
-        self.assertTrue(len(r) == 42)
-        self.assertGreaterEqual(r, 0)
-        self.assertLessEqual(r, maxint)
 
     def test_numpy_extrude(self):
         """

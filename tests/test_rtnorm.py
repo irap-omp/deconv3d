@@ -9,7 +9,7 @@ sys.path.append('.')  # T_T
 from lib.rtnorm import rtnorm
 
 
-class RunTest(unittest.TestCase):
+class RtnormTest(unittest.TestCase):
 
     longMessage = True
 
