@@ -40,11 +40,12 @@ MAXIMUM = sys.maxint
 class Run:
     """
     This is the main runner of the deconvolution.
+
     Use it like this :
     ```
     cube = Cube.from_fits('my_fits.fits')
     inst = MUSE()
-    run = Run(cube, inst, max_iterations=1000)
+    run = Run(cube, inst, max_iterations=10000)
     run.plot_chain()
     ```
 
@@ -206,8 +207,7 @@ class Run:
         self.instrument = instrument
 
         # Set up the spread functions from the instrument
-        # self.lsf = self.instrument.lsf.as_vector(self.cube)  # fixme
-        self.lsf = None
+        self.lsf = self.instrument.lsf.as_vector(self.cube)
         self.fsf = self.instrument.fsf.as_image(self.cube)
         if self.fsf.shape[0] % 2 == 0 or self.fsf.shape[1] % 2 == 0:
             raise ValueError("FSF *must* be of odd dimensions")
@@ -336,7 +336,7 @@ class Run:
         err_old = cube.data - sim
         cur_iteration += 1
 
-        # Holds the current parameters, is saved in t
+        # Holds the current parameters
         parameters = self.chain[0].copy()
 
         # Accepted iterations counter (we accepted the whole first iteration)
@@ -678,7 +678,7 @@ class Run:
         if lsf is None:
             line_conv = line
         else:
-            # Spectral convolution: using the Fast Fourier Transform of the LSF
+            # Spectral convolution using the Fast Fourier Transform of the LSF
             if lsf_fft is None:
                 line_conv, lsf_fft = convolve_1d(line, lsf)
             else:
@@ -687,7 +687,7 @@ class Run:
         # Collect the shape of the FSF
         fh = fsf.shape[0]
         fw = fsf.shape[1]
-        # The FSF *must* be odd-shaped, so these are integers
+        # The FSF *MUST* be odd-shaped, so these are integers
         fhh = (fh-1)/2  # FSF half height
         fhw = (fw-1)/2  # FSF half width
 

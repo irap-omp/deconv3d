@@ -114,7 +114,7 @@ def convolve_1d(data, psf, compute_fourier=True, axis=0):
     # Convolution
     fft = np.fft.fftshift(np.fft.irfftn(fftimg * fftpsf, s=size, axes=axis), axes=axis).real
 
-    # Remove padding
+    # Truncate padding
     cube_conv = fft[boxcube]
 
     return cube_conv, fftpsf
