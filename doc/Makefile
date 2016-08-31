@@ -1,11 +1,13 @@
 # Makefile for Sphinx documentation
 
 # You probably want to run : `make html`.
-
+# You probably want to activate virtualenv first, too.
 
 # You can set these variables from the command line.
 SPHINXOPTS    =
-SPHINXBUILD   = sphinx-build
+# This is to make sphinx work through virtualenv
+#SPHINXBUILD   = sphinx-build
+SPHINXBUILD   = python -m sphinx
 PAPER         =
 BUILDDIR      = build
 
