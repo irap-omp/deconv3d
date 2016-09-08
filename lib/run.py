@@ -56,8 +56,8 @@ class Run:
         The instrument object to use. Use `MUSE()`, for example.
     mask: ndarray
         An image of the spatial size of the above cube, filled with zeroes and
-        ones. The runner will only try to deconvolve the spaxels where this mask
-        is set to 1. The default mask is filled with ones, ie. transparent.
+        ones. The runner will only try to deconvolve the spaxels where this
+        mask is set to 1. The default mask is filled with ones, transparency.
         This mask is also automatically opacified where there are NaN values in
         the input cube.
     variance: ndarray
@@ -78,9 +78,8 @@ class Run:
         You can tweak the Cauchy jump using this coefficient.
         You can provide a ndarray of the dimensions of the parameters of your
         line model, to customize the jump amplitude of each parameter.
-        The unit is pixels, and the default is 0.1.
+        The unit is pixels, and the default value is 0.1.
         We don't use this parameter for the gibbsed parameters.
-        The default value of this is 1, which means no tweaking.
     max_iterations: int
         The number of iterations after which the chain will end.
     keep_one_in: int

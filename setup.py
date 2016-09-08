@@ -1,6 +1,7 @@
 from distutils.core import setup
 import os
 
+# Build and publish :
 # python setup.py sdist upload
 
 version = '1.0.0'
@@ -8,7 +9,9 @@ github_url = 'https://github.com/irap-omp/deconv3d'
 author = 'Antoine Goutenoir'
 email = 'antoine.goutenoir@irap.omp.eu'
 
-# Pypi does not support markdown (the cheeseshop strikes again)
+
+# Pypi does not support markdown (the cheeseshop strikes again),
+# so we're converting our MarkDown README into ReStructuredText.
 long_description = ''
 try:
     import pypandoc  # to convert from markdown to restructured text
