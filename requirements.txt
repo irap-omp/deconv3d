@@ -5,6 +5,7 @@ numpy
 scipy
 astropy
 matplotlib
+hyperspectral
 
 # Distribution tools
 # pypandoc
