@@ -71,7 +71,7 @@ class Run:
         itself. Should be a 3D array of shape :
         (cube_height, cube_width, model_parameters_count).
         If it is a 1D array of the length of the model parameters, it will be
-        broadcasted to each spaxel.
+        broadcast to each spaxel.
         When not defined, the initial parameters will be picked at random
         between their respective boundaries.
     jump_amplitude: float | ndarray
@@ -121,7 +121,7 @@ class Run:
         if isinstance(cube, basestring):
             cube = Cube.from_fits(cube)
         if not isinstance(cube, Cube):
-            # try:  # todo: implement Cube.from_mpdaf() first
+            # try:  # todo: implement Cube.from_mpdaf() in hyperspectral first
             #     import mpdaf
             #     if isinstance(cube, mpdaf.obj.Cube):
             #         if variance is None:
@@ -143,7 +143,7 @@ class Run:
             "The input cube has data that is too small and will cause " \
             "numerical instability, infinite loops, or worse : bad science."
 
-        # Collect informations about the cube
+        # Collect information about the cube
         cube_shape = cube.data.shape
         cube_width = cube_shape[2]
         cube_height = cube_shape[1]
@@ -157,7 +157,7 @@ class Run:
             mask = getdata(mask)
         self.mask = mask
 
-        # Flag invalid spaxels : we won't use them for iteration and summatio.
+        # Flag invalid spaxels : we won't use them for iteration and summation.
         # By default, we flag as invalid all spaxels that have a NaN value
         # somewhere in the spectrum.
         self.mask[np.isnan(np.sum(self.cube.data, 0))] = 0
@@ -489,7 +489,6 @@ class Run:
                         ek_part = contribution_one[:, y_min:y_max, x_min:x_max]
 
                     # Compute the characteristics of the gaussian aposteriori
-                    # ra = float(max_boundaries[gpi] ** 2)  # apriori variance
                     ra = gibbs_apriori_variance  # apriori variance
                     ro = ra / (1. + ra * np.sum(ek_part ** 2 / var_part))
                     mu = ro * np.sum(ek_part * ul_part / var_part)
@@ -757,7 +756,6 @@ class Run:
             (max_iterations, cube_height, cube_width, parameters_count).
           - <name>_images.png
             A mosaic of the relevant cubes, flattened along the spectral axis.
-          - todo: describe the other generated files.
 
         name: string
             An absolute or relative name that will be used as prefix for the
