@@ -41,19 +41,18 @@ class Run:
     """
     This is the main runner of the deconvolution.
 
-    Use it like this :
-    ```
-    cube = Cube.from_fits('my_fits.fits')
-    inst = MUSE()
-    run = Run(cube, inst, max_iterations=10000)
-    run.plot_chain()
-    ```
+    Use it like this : ::
+
+        cube = Cube.from_fits('my_fits.fits')
+        inst = MUSE()
+        run = Run(cube, inst, max_iterations=10000)
+        run.plot_chain()
 
     cube: str | ndarray
-        The path to a FITS file, or a 3D `numpy.ndarray`,
+        The path to a ``FITS`` file, or a 3D ``numpy.ndarray``,
         containing the source data you want to deconvolve.
     instrument: Instrument
-        The instrument object to use. Use `MUSE()`, for example.
+        The instrument object to use. Use ``MUSE()``, for example.
     mask: ndarray
         An image of the spatial size of the above cube, filled with zeroes and
         ones. The runner will only try to deconvolve the spaxels where this
@@ -64,10 +63,10 @@ class Run:
         A variance cube of the same dimensions as the input cube.
     model: Type | LineModel
         The model object (or classname) of the lines you want to use in the
-        simulation. This is defaulted to SingleGaussianLineModel, a simple model
-        of a single gaussian line that has three parameters defining it.
+        simulation. This is defaulted to ``SingleGaussianLineModel``, a simple
+        model of a single gaussian line that has three parameters defining it.
     initial_parameters: str | ndarray | None
-        Either a filepath to a .npy file holding a ndarray, or the ndarray
+        Either a filepath to a ``.npy`` file holding a ndarray, or the ndarray
         itself. Should be a 3D array of shape :
         (cube_height, cube_width, model_parameters_count).
         If it is a 1D array of the length of the model parameters, it will be
@@ -83,12 +82,12 @@ class Run:
     max_iterations: int
         The number of iterations after which the chain will end.
     keep_one_in: int
-        Will only write in the chain one parameter set every `keep_one_in`th
+        Will only write in the chain one parameter set every ``keep_one_in`` th
         iterations. This is a way to save space in the resulting chain.
         The default value is 1, which will save *all* iterations.
         Provide a higher value if you have RAM or DISK space issues.
     write_every: int
-        Will write the chain to disk every `write_every` iterations, which
+        Will write the chain to disk every ``write_every`` iterations, which
         allows you to inspect the chain while the runner is running, and
         also ensures we don't blow the RAM.
     """

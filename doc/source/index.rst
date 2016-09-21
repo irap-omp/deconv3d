@@ -42,6 +42,7 @@ A full parameterized usage looks like this: ::
             min_acceptance_rate=0.01
         )
 
+More informations about each parameter can be found `here <api.html>`_.
 
 Masking
 -------
