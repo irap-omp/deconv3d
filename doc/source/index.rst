@@ -47,12 +47,22 @@ Masking
 -------
 
 Performance improves drastically if you mask the voxels you want to run the fitting on.
-The mask should be a 2D numpy.ndarray of the spatial size of the cube.
+The mask should be a 2D ``numpy.ndarray`` of the spatial size of the cube.
 
 The runner will only try to deconvolve the spaxels where this
-mask is set to 1. The default mask is filled with ones, transparency.
-This mask is also automatically opacified where there are NaN values in
+mask is set to 1. The default mask is filled with ones, ie. transparency.
+This mask is also automatically opacified where there are ``NaN`` values in
 the input cube.
+
+For your convenience we've included a mask creator function,
+that will mask spaxels whose data is below the specified percentile : ::
+
+        from deconv3d import Run, above_percentile
+        run = Run(
+            cube='my_cube.fits',
+            instrument=deconv3d.MUSE(),
+            mask=above_percentile('my_cube.fits', percentile=30)
+        )
 
 Authors
 -------
