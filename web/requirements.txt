@@ -1,2 +1,3 @@
+doit
 flask <= 1.0.0
 frozen-flask

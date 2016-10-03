@@ -14,7 +14,7 @@
 import sys, os
 
 # Collect the (semantic) version number Major.Minor.Patch
-with open(os.path.abspath('../../../VERSION'), 'r') as version_file:
+with open(os.path.abspath('../../VERSION'), 'r') as version_file:
     deconv3d_version = version_file.read().replace('\n', '').strip()
 
 # If extensions (or modules to document with autodoc) are in another directory,
