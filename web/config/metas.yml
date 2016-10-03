@@ -1,0 +1,11 @@
+# This file is formatted using YAML, learn more here : http://en.wikipedia.org/wiki/YAML
+
+title: Deconv3d
+description: deconv3d is a python package to extract spectral lines from a hyperspectral cube.
+keywords:
+    - MUSE
+    - deconv3d
+    - galaxy parameters
+    - galaxy kinematics
+    - IRAP
+    - OMP

@@ -1,0 +1,23 @@
+{% extends 'layout.html.jinja2' %}
+
+{% block title %}News{% endblock %}
+
+{% block content %}
+
+{{ md_page | markdown }}
+
+<section id="news">
+  <h2>News</h2>
+
+  {% for n in news %}
+  <article>
+    <h3>{{ n.date }} &ac; {{ n.title | markdown(p=False) }}</h3>
+    {{ n.corpus | markdown }}
+  </article>
+  {% else %}
+  <p>There are no news on this page.</p>
+  {% endfor %}
+</section>
+
+
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends 'layout.html.jinja2' %}
+
+{% block title %}Downloads{% endblock %}
+
+{% block content %}
+
+<h2>Direct Download</h2>
+
+<p>
+You can download a tarball of the latest version of deconv3d ({{ version }}) here :
+</p>
+
+<ul id="downloads_list">
+{% for file in downloads_files | sort(True) %}
+  <li>
+    <a href="downloads/{{ file }}">{{ file }}</a>
+  </li>
+{% endfor %}
+</ul>
+
+
+<h2>Dependencies</h2>
+
+<ul>
+{% for dependency in config.main.dependencies %}
+  <li>
+    {% if dependency.link %}
+    <a href="{{ dependency.link }}">
+      {{ dependency.name | markdown(p=False) }}
+    </a>
+    {% else %}
+    {{ dependency.name | markdown(p=False) }}
+    {% endif %}
+    {% if dependency.version %}{{ dependency.version | e }}{% endif %}
+  </li>
+{% endfor %}
+</ul>
+
+
+<section id="changelog">
+  <h2>Change log</h2>
+  {{ changelog | markdown }}
+</section>
+
+{% endblock %}

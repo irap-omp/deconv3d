@@ -1,0 +1,18 @@
+{% extends 'layout.html.jinja2' %}
+
+{% block title %}Authors{% endblock %}
+
+{% block content %}
+
+<h2>Authors</h2>
+
+{{ config.authors.introduction | markdown }}
+
+<dl>
+{% for author in config.authors.authors %}
+  <dt>{{ author.title }}</dt>
+  <dd><a href="mailto:{{ author.email }}">{{ author.name }}</a></dd>
+{% endfor %}
+</dl>
+
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends 'layout.html.jinja2' %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+
+<h2>Overview</h2>
+
+
+{{ config.main.content.overview | markdown }}
+
+
+<section id="paper">
+  <h2>Paper</h2>
+
+  <p>
+    You can download the <a href="{{ config.main.links.paper }}" target="_blank">paper about deconv3d</a>,
+    authored by N. Bouché, H. Carfantan, I. Schroetter, L. Michel-Dansac, T. Contini.
+  </p>
+</section>
+
+
+<section id="news">
+  <h2>News</h2>
+
+  {% for n in news %}
+  <article>
+    <h3>{{ n.date }} &ac; {{ n.title | markdown(p=False) }}</h3>
+    {{ n.corpus | markdown }}
+  </article>
+  {% else %}
+  <p>There are no news on this page.</p>
+  {% endfor %}
+</section>
+
+
+
+{% endblock %}

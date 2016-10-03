@@ -1,0 +1,27 @@
+Some pages are static and simple enough to be fully written in markdown, and
+then directly converted to HTML.
+
+http://daringfireball.net/projects/markdown/basics
+
+
+Caveats
+-------
+
+Markdown does not allow text justification and centering, for instance.
+Images should be embeddable, but still require testing.
+
+
+Syntax Snippets
+---------------
+
+The paper was printed in [real paper](http://realpaper.com/).
+
+Some **bold** text, and then _emphasized_, and some code :
+
+    from deconv3d import Run
+    run = Run('galaxy.fits')
+
+A list :
+- One
+- Two
+- Three

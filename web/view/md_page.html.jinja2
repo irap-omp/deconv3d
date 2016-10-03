@@ -1,0 +1,9 @@
+{% extends 'layout.html.jinja2' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+
+{{ md_page | markdown }}
+
+{% endblock %}

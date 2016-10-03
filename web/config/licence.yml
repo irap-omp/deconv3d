@@ -1,0 +1,15 @@
+# This is formatted using [YAML](http://en.wikipedia.org/wiki/YAML)
+
+credits: |
+    If you use _deconv3d_, please acknowledge that _deconv3d_ has been developed by
+    the **IRAP-UPS / CNRS** and cite "Carfantan, N. et al. 2015, AJ, submitted"
+
+    *[IRAP]: Institut de Recherche en Astrophysique et Planétologie
+    *[UPS]:  Université Paul Sabatier
+    *[CNRS]: Centre National de Recherche Scientifique
+
+disclaimer: |
+    THIS SOFTWARE IS PROVIDED "AS IS" AND WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
+
+    IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE FOR
+    ANY TORT ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE.

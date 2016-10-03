@@ -1,0 +1,52 @@
+# This file is formatted using YAML. (http://en.wikipedia.org/wiki/YAML)
+# The text will usually be parsed as Markdown. (http://daringfireball.net/projects/markdown/basics)
+
+content:
+    overview: |
+        Deconv3d 3D is a tool to deconvolve 3-dimensional data.
+        It is an implementation of a MCMC with MH within Gibbs for the
+        estimation and non-parametric deconvolution of galactic kinematics from
+        hyperspectral data cubes.
+
+        *[MCMC]: Markov Chain Monte Carlo
+        *[MH]: Metropolis-Hastings
+        *[SNR]: Signal-Noise Ratio
+
+
+links:
+    # fixme: where is the paper ? Can't find it on arxiv !
+    paper: http://arxiv.org/abs/1501.06586
+
+# The python libraries deconv3d is built upon.
+# Ideally, these should be in requirements.txt, to be pip-enabled,
+# but pip's dependency manifest is weirdly low on features...
+# (for instance, where are version constraints and external repos?)
+dependencies:
+    -
+        name: 'numpy'
+        version: '>= 1.8.0'
+        link: 'http://www.numpy.org'
+    -
+        name: 'scipy'
+        version:
+        link: 'http://www.scipy.org'
+    -
+        name: 'pyfits or astropy'
+        version:
+        link: 'http://www.astropy.org'
+    -
+        name: 'asciitable'
+        version:
+        link: 'http://www.asciitable.org'
+    -
+        name: 'bottleneck _(optional)_'
+        version:
+        link: https://pypi.python.org/pypi/Bottleneck
+    -
+        name: 'pyfftw _(optional)_'
+        version:
+        link: https://pypi.python.org/pypi/pyFFTW
+    -
+        name: 'mpdaf _(optional)_'
+        version:
+        link:

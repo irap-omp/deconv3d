@@ -1,0 +1,23 @@
+{% extends 'layout.html.jinja2' %}
+
+{% block title %}Credits{% endblock %}
+
+{% block content %}
+
+<h2>Credits</h2>
+
+{{ config.licence.credits | markdown }}
+
+<p class="centered">
+  <img src="static/img/logo_ups.jpg" alt="UPS" />
+  <img src="static/img/logo_cnrs.png" alt="CNRS" />
+</p>
+
+
+<h2>Disclaimer</h2>
+
+<div class="justified">
+  {{ config.licence.disclaimer | markdown }}
+</div>
+
+{% endblock %}

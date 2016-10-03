@@ -1,0 +1,22 @@
+# This file is formatted using YAML, learn more here : http://en.wikipedia.org/wiki/YAML
+
+introduction: |
+    Deconv3d is the brain child of the people listed below :
+
+authors:
+    -
+        title: Pilot
+        name: Hervé Carfantan
+        email: herve.carfantan@irap.omp.eu
+    -
+        title: Consultant
+        name: Nicolas Bouché
+        email: nicolas.bouche@irap.omp.eu
+    -
+        title: Python Ninja
+        name: Antoine Goutenoir
+        email: antoine.goutenoir@irap.omp.eu
+    -
+        title: Webmaster
+        name: Antoine Goutenoir
+        email: antoine.goutenoir@irap.omp.eu
