@@ -4,7 +4,7 @@
 content:
     overview: |
         Deconv3d 3D is a tool to deconvolve 3-dimensional data.
-        It is an implementation of a MCMC with MH within Gibbs for the
+        It is an implementation of a MCMC with Metropolis-Hasting within Gibbs for the
         estimation and non-parametric deconvolution of galactic kinematics from
         hyperspectral data cubes.
 
@@ -15,7 +15,7 @@ content:
 
 links:
     # fixme: where is the paper ? Can't find it on arxiv !
-    paper: http://arxiv.org/abs/1501.06586
+    paper: http://dx.doi.org/10.1109/TIP.2014.2343461
 
 # The python libraries deconv3d is built upon.
 # Ideally, these should be in requirements.txt, to be pip-enabled,
