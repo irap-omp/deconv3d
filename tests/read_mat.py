@@ -1,4 +1,5 @@
 # Private and dirty testing of deconv3d
+
 # Dans data14forAntoine
 #    FSF             15x15                 1800  double
 #    data_noise      24x30x21            120960  double
@@ -61,6 +62,9 @@ print "  w shape", w.shape
 print "  w max", np.amax(w)
 print "  w min", np.amin(w)
 
+# Matlab is 1-indexed, so we need to remove 1 from c
+c -= 1
+
 real_params = np.dstack((a, c, w))
 print "Expected params shape:", real_params.shape
 
@@ -91,6 +95,12 @@ instrument = MUSE(fsf_fwhm=0.8841, lsf_fwhm=lsf_fwhm)
 
 cube = instrument.build_cube(measured)
 
+# cube.to_fits("test_cube.fits")
+# np.save("test_cube_var.npy", var)
+# np.save("test_cube_fsf.npy", fsf)
+# np.save("test_cube_params.npy", real_params)
+# exit()
+
 run = Run(
     cube=cube,
     variance=var,
@@ -99,7 +109,7 @@ run = Run(
     # initial_parameters=init_params,
     gibbs_apriori_variance=5.,
     # mask=above_percentile(cube, 60),
-    max_iterations=20000,
+    max_iterations=40000,
     keep_one_in=10
 )
 
@@ -134,9 +144,9 @@ for i in range(len(pixels)):
     pixel = pixels[i]
     x = pixel[0]
     y = pixel[1]
-    plt.plot(range(0, zsize), deconved[:, y, x], 'b', label='our model (clean)')
-    plt.plot(range(0, zsize), expected[:, y, x], 'r', label='expected (clean)')
-    plt.plot(range(0, zsize), measured[:, y, x], 'g', label='measure (convolved)')
+    plt.plot(range(0, zsize), deconved[:, y, x], 'b', label='our model')
+    plt.plot(range(0, zsize), expected[:, y, x], 'r', label='expected')
+    plt.plot(range(0, zsize), measured[:, y, x], 'g', label='measure')
     plt.title("X={x}, Y={y}".format(x=x, y=y))
 plt.legend()
 plt.savefig(run_name + '_lines.png')

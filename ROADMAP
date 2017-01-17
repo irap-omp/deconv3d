@@ -1,6 +1,9 @@
 1.0.0
 -----
 
+- More documentation about Instruments
+- [ ] Make a proper test with a neat cube
+  - [x] Export matlab data to FITS (cube) and npy (FSF, theoretical parameters)
 - Add `setup.py`.
 - Submit `deconv3d` to PyPi.
 - Repair broken flexibility for Gibbs within MH.
