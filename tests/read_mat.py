@@ -93,13 +93,18 @@ logger.setLevel(logging.DEBUG)
 lsf_fwhm = 2.355 * 0.9345 * 0
 instrument = MUSE(fsf_fwhm=0.8841, lsf_fwhm=lsf_fwhm)
 
-cube = instrument.build_cube(measured)
+cube_built = instrument.build_cube(measured)
 
-# cube.to_fits("test_cube.fits")
-# np.save("test_cube_var.npy", var)
-# np.save("test_cube_fsf.npy", fsf)
-# np.save("test_cube_params.npy", real_params)
+cube = Cube.from_fits("input/test_cube.fits")
+
+# Above cube made with :
+# cube_built.to_fits("input/test_cube.fits")
+# np.save("input/test_cube_var.npy", var)
+# np.save("input/test_cube_fsf.npy", fsf)
+# np.save("input/test_cube_params.npy", real_params)
 # exit()
+
+var = np.load("input/test_cube_var.npy")
 
 run = Run(
     cube=cube,
@@ -108,7 +113,7 @@ run = Run(
     # jump_amplitude=[0.0, 0.1, 0.1],
     # initial_parameters=init_params,
     gibbs_apriori_variance=5.,
-    # mask=above_percentile(cube, 60),
+    mask=above_percentile(cube, 60),
     max_iterations=40000,
     keep_one_in=10
 )
