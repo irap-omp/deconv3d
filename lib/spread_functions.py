@@ -72,7 +72,7 @@ class GaussianFieldSpreadFunction(FieldSpreadFunction):
     """
     The default Gaussian Field Spread Function.
 
-    fwhm: float
+    fwhm: float [in arcsec]
         Full Width Half Maximum in arcsec, aka. "seeing".
     pa: float [default is 0.]
         Position Angle, the clockwise rotation from Y of ellipse,
@@ -135,23 +135,29 @@ class MoffatFieldSpreadFunction(GaussianFieldSpreadFunction):
     """
     The Moffat Field Spread Function.
 
-    alpha: float
+    fwhm: float [arcsec]
         Moffat's distribution alpha variable : http://en.wikipedia.org/wiki/Moffat_distribution
     beta: float
         Moffat's distribution beta variable : http://en.wikipedia.org/wiki/Moffat_distribution
 
-    See GaussianPointSpreadFunction for the other parameters.
+    pa: float [default is 0.]
+        Position Angle, the clockwise rotation from Y of ellipse,
+        in angular degrees.
+    ba: float [default is 1.0]
+        Axis ratio of the ellipsis, b/a ratio (y/x).
     """
 
-    def __init__(self, alpha=None, beta=None, pa=None, ba=None):
+    def __init__(self, fwhm=None, beta=None, pa=None, ba=None):
+        self.fwhm=fwhm
+	    alpha = fwhm / (2.*np.sqrt(2.**(1./beta)-1) )
         self.alpha = alpha
         self.beta = beta
-        GaussianFieldSpreadFunction.__init__(self, None, pa, ba)
+        GaussianFieldSpreadFunction.__init__(self, fwhm, pa, ba)
 
     def __str__(self):
         return """Moffat PSF :
-  alpha        = {i.alpha} "
-  beta         = {i.beta} "
+  fwhm         = {i.fwhm} "
+  beta         = {i.beta} 
   pa           = {i.pa} °
   ba           = {i.ba}""".format(i=self)
 
@@ -166,7 +172,7 @@ class MoffatFieldSpreadFunction(GaussianFieldSpreadFunction):
         y, x = np.indices(shape)
         r = self._radius(xo, yo, x, y)
 
-        alpha = self.alpha
+        alpha = self.alpha / for_cube.get_step(1).to('arcsec').value
         beta = self.beta
         psf = (1. + (r / alpha) ** 2) ** (-beta)
 
