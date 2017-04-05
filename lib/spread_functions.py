@@ -148,9 +148,7 @@ class MoffatFieldSpreadFunction(GaussianFieldSpreadFunction):
     """
 
     def __init__(self, fwhm=None, beta=None, pa=None, ba=None):
-        self.fwhm=fwhm
-        alpha = fwhm / (2.*np.sqrt(2.**(1./beta)-1) )
-        self.alpha = alpha
+        self.fwhm = fwhm
         self.beta = beta
         GaussianFieldSpreadFunction.__init__(self, fwhm, pa, ba)
 
@@ -162,6 +160,9 @@ class MoffatFieldSpreadFunction(GaussianFieldSpreadFunction):
   ba           = {i.ba}""".format(i=self)
 
     def as_image(self, for_cube, xo=None, yo=None):
+        # Get the FWHM in pixels (we assume the pixels are squares!)
+        fwhm = self.fwhm / for_cube.get_step(1).to('arcsec').value
+       
         shape = for_cube.shape[1:]
 
         if xo is None:
@@ -172,7 +173,7 @@ class MoffatFieldSpreadFunction(GaussianFieldSpreadFunction):
         y, x = np.indices(shape)
         r = self._radius(xo, yo, x, y)
 
-        alpha = self.alpha / for_cube.get_step(1).to('arcsec').value
+        alpha = fwhm / (2.*np.sqrt(2.**(1./beta)-1) ) 
         beta = self.beta
         psf = (1. + (r / alpha) ** 2) ** (-beta)
 
