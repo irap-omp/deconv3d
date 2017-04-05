@@ -149,7 +149,7 @@ class MoffatFieldSpreadFunction(GaussianFieldSpreadFunction):
 
     def __init__(self, fwhm=None, beta=None, pa=None, ba=None):
         self.fwhm=fwhm
-	    alpha = fwhm / (2.*np.sqrt(2.**(1./beta)-1) )
+        alpha = fwhm / (2.*np.sqrt(2.**(1./beta)-1) )
         self.alpha = alpha
         self.beta = beta
         GaussianFieldSpreadFunction.__init__(self, fwhm, pa, ba)
