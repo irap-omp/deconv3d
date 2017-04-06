@@ -135,7 +135,9 @@ class MoffatFieldSpreadFunction(GaussianFieldSpreadFunction):
     """
     The Moffat Field Spread Function.
 
-    fwhm: float [arcsec]
+    fwhm if alpha is None: float [in arcsec]
+        Moffat's distribution fwhm variable : http://en.wikipedia.org/wiki/Moffat_distribution
+    alpha if fwhm is None: float [in arcsec]
         Moffat's distribution alpha variable : http://en.wikipedia.org/wiki/Moffat_distribution
     beta: float
         Moffat's distribution beta variable : http://en.wikipedia.org/wiki/Moffat_distribution
@@ -147,22 +149,21 @@ class MoffatFieldSpreadFunction(GaussianFieldSpreadFunction):
         Axis ratio of the ellipsis, b/a ratio (y/x).
     """
 
-    def __init__(self, fwhm=None, beta=None, pa=None, ba=None):
-        self.fwhm = fwhm
+    def __init__(self, fwhm=None, alpha=None, beta=None, pa=None, ba=None):
+        self.alpha = alpha
         self.beta = beta
         GaussianFieldSpreadFunction.__init__(self, fwhm, pa, ba)
 
     def __str__(self):
         return """Moffat PSF :
   fwhm         = {i.fwhm} "
+  alpha        = {i.alpha} "
   beta         = {i.beta} 
   pa           = {i.pa} °
   ba           = {i.ba}""".format(i=self)
 
     def as_image(self, for_cube, xo=None, yo=None):
-        # Get the FWHM in pixels (we assume the pixels are squares!)
-        fwhm = self.fwhm / for_cube.get_step(1).to('arcsec').value
-       
+        
         shape = for_cube.shape[1:]
 
         if xo is None:
@@ -173,8 +174,16 @@ class MoffatFieldSpreadFunction(GaussianFieldSpreadFunction):
         y, x = np.indices(shape)
         r = self._radius(xo, yo, x, y)
 
-        alpha = fwhm / (2.*np.sqrt(2.**(1./beta)-1) ) 
         beta = self.beta
+        if self.alpha is None:
+            # Get the FWHM in pixels (we assume the pixels are squares!)
+            fwhm = self.fwhm / for_cube.get_step(1).to('arcsec').value
+            alpha = fwhm / (2.*np.sqrt(2.**(1./beta)-1) ) 
+        if self.fwhm is None:
+            # Get the FWHM in pixels (we assume the pixels are squares!)
+            alpha = self.alpha / for_cube.get_step(1).to('arcsec').value
+            fwhm = alpha * (2.*np.sqrt(2.**(1./beta)-1) ) 
+
         psf = (1. + (r / alpha) ** 2) ** (-beta)
 
         return psf / psf.sum()
